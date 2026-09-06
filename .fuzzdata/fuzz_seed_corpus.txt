@@ -1,0 +1,84 @@
+# DCC-EX Native Protocol Fuzzer Seed Corpus
+# Add these to your test harness or corpus file for Go's fuzzer
+
+# Valid locostate messages with various speeds and directions
+<l 3 2 0 4096>           # cab 3, stopped, forward
+<l 3 2 128 4096>         # cab 3, speed 1, forward (raw byte 128)
+<l 3 2 192 4096>         # cab 3, speed 7, forward
+<l 3 2 254 4096>         # cab 3, speed 125, forward (near max)
+<l 3 2 255 4096>         # cab 3, stopped + reverse flag
+<l 3 2 0 0>              # cab 3, stopped, no extended address
+<l -1 2 128 4096>        # e-stop cab (not in reminder table)
+
+# Various power states
+<p0>                      # power off
+<p1>                      # power on
+<p1 MAIN>                 # power on main track
+<p1 PROG>                 # power on prog track
+<p2>                      # overload (latched)
+
+# Throttle commands - valid and edge cases
+<t 3>                     # throttle with default stop
+<t 3 0 1>                 # cab 3, stopped, forward
+<t 3 64 1>                # cab 3, mid speed, forward
+<t 3 126 1>               # cab 3, max speed, forward
+<t 3 0 0>                 # cab 3, stopped, reverse
+<t 3 126 0>               # cab 3, max speed, reverse
+
+# Emergency stop (malformed)
+</                        # e-stop attempt (should error)
+
+# Current readings with various values
+<c 100 500 400>          # current 100mA, max 500, trip 400
+<c -1 0 0>               # e-stop current
+
+# CV operations
+<v 29 128>                # CV29 read success
+<v 3 64>                 # acceleration rate read
+<r 3 64>                 # write ack for CV3=64
+
+# Address operations
+<r 3>                     # read ack cab 3
+<w 3>                     # write ack cab 3 (set address)
+
+# Version/info messages
+<i>                       # version info
+
+# Malformed frames for error handling
+<                         # unclosed opening bracket
+>                         # unclosed closing bracket
+<<<l 3 2 126 4096>>>     # escaped brackets inside frame
+<l 3 2                     # no closing bracket
+<l 3 2 126 4096 EXTRA>   # extra garbage after frame
+
+# Boundary values for numeric fields
+<l -256 2 0 4096>        # cab at negative boundary
+<l 10293 2 0 4096>       # cab at positive boundary
+<v 1024 255>             # CV at max value, value at max
+
+# Short frames (some should error)
+<p>                       # bare p opcode
+<l>                       # bare l opcode
+<t>                       # bare t opcode
+
+# Whitespace variations
+<l   3   2   126   4096 >  # excessive whitespace
+<l  3 >                   # trailing space before bracket
+ <l 3 2 126 4096>        # leading/trailing spaces
+
+# Single byte frames
+<t>                       # single char opcode
+<c>                       # another single char
+
+# Speed encoding edge cases with raw bytes
+<l 3 2 0 4096>           # speed=stop, direction=forward (raw byte 0)
+<l 3 2 1 4096>           # speed=e-stop, direction=stopped (raw byte 1)
+<l 3 2 2 4096>           # speed=1, direction=forward (raw byte 2)
+<l 3 2 127 4096>         # speed=125, direction=forward (raw byte 127)
+<l 3 2 128 4096>         # speed=1, direction=reverse (raw byte 128)
+<l 3 2 254 4096>         # speed=125, direction=reverse (raw byte 254)
+<l 3 2 255 4096>         # speed=stop, direction=stopped (raw byte 255)
+
+# Direction bit encoding tests
+<l 3 2 128 4096>         # bit 7 set = forward
+<l 3 2 129 4096>         # bit 7 unset = reverse
