@@ -4,48 +4,54 @@
 package protocol
 
 import (
-	"regexp"
 	"strings"
 )
 
 // FrameExtractor accumulates bytes and extracts complete angle-bracket
 // delimited frames from an arbitrary byte stream. It handles partial frames,
 // multiple frames per read, garbage bytes, and bounded runaway buffers.
-// The buffer is bounded at 4096 bytes; excess data returns an error on overflow.
+// The buffer is bounded at MaxBufferSize; excess data returns overflow error.
 type FrameExtractor struct {
-	buf     []byte         // accumulated buffer (bounded at maxBufferSize)
-	pattern *regexp.Regexp // <...> frame regex
+	buf []byte // accumulated buffer (bounded at maxBufferSize)
 }
 
 // MaxBufferSize specifies the maximum buffer size for FrameExtractor.
-// Frames exceeding this limit cause overrun; excess bytes are returned as error.
+// Frames exceeding this limit cause overrun; excess bytes are discarded with an error.
 const MaxBufferSize = 4096
 
 // NewFrameExtractor creates a new FrameExtractor ready to receive bytes.
 func NewFrameExtractor() *FrameExtractor {
-	// Match angle-bracket delimited frames, non-greedy to handle multiple per read
 	return &FrameExtractor{
-		buf:     make([]byte, 0, 1024), // start with reasonable size
-		pattern: regexp.MustCompile(`<([^>]*)>`),
+		buf: make([]byte, 0, 1024), // start with reasonable size
 	}
 }
+
+// overflowOverflowError is returned when the buffer would exceed MaxBufferSize.
+var overflowOverflowError = strings.NewReader("buffer overflow")
 
 // Write appends bytes to the internal buffer. Complete frames are extracted
 // and returned via ExtractedFrames(). This implements the incremental parse
 // pattern where multiple frames may appear in a single read, or a read may
 // contain only part of a frame waiting for more data. The buffer is bounded
-// at MaxBufferSize (4096 bytes); excess bytes are discarded and an error is
-// returned to indicate overflow. Partial frames are retained up to the limit.
+// at MaxBufferSize (4096 bytes). On overflow: excess bytes beyond current capacity
+// plus partial tail are discarded; an error indicates overflow occurred.
+// Returns the discarded excess on overflow, nil otherwise.
 func (e *FrameExtractor) Write(b []byte) ([]byte, error) {
-	const maxBufferSize = 4096 // 4KB bounded buffer per requirements
+	const maxBufferSize = MaxBufferSize
 
 	needed := len(e.buf) + len(b)
 	if needed > maxBufferSize {
-		// Truncate to max size and return excess
-		excess := b[len(e.buf):] // bytes beyond current capacity
-		e.buf = make([]byte, maxBufferSize)
+		// Overflow: preserve what we can fit, discard excess
+		keep := maxBufferSize
+		discard := b[len(e.buf):] // bytes beyond current capacity
+		// Fit existing buffer content up to max size
+		e.buf = make([]byte, keep)
 		copy(e.buf, e.buf[:maxBufferSize])
-		return excess, nil // Return truncated data; application must re-read remainder
+		// Add partial new data that fits
+		if len(discard) > 0 {
+			e.buf = append(e.buf, discard[:maxBufferSize-len(e.buf)]...)
+		}
+		return discard, overflowOverflowError // overflow detected via returned error
 	}
 
 	e.buf = append(e.buf, b...)
@@ -54,10 +60,10 @@ func (e *FrameExtractor) Write(b []byte) ([]byte, error) {
 
 // ExtractedFrames returns all complete frames currently buffered, and any
 // trailing bytes that do not form a complete frame. The frames are returned
-// as strings containing the body only (without angle brackets). The buffer
+// as byte slices containing the body only (without angle brackets). The buffer
 // is reset after extraction of all complete frames; only incomplete trailing
-// data remains in the buffer for future writes. Partial frames are truncated
-// to MaxBufferSize when overflow occurs.
+// data remains in the buffer for future writes. Partial frames are retained up to
+// MaxBufferSize when overflow occurs and discarded excess bytes are returned on Write().
 func (e *FrameExtractor) ExtractedFrames() (frames [][]byte, remainder []byte) {
 	buf := e.buf
 
