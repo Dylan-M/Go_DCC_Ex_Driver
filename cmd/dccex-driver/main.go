@@ -1,19 +1,58 @@
 package main
 
 import (
+	"errors"
+	"flag"
+	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/config"
+	"github.com/Dylan-M/Go_DCC_Ex_Driver/startup"
+	"github.com/Dylan-M/Go_DCC_Ex_Driver/stations"
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/throttle"
 	fyneui "github.com/Dylan-M/Go_DCC_Ex_Driver/ui/fyne"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 )
 
 func main() {
+	if err := run(os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+}
+
+func run(args []string) error {
+	options, err := startup.Parse(args, os.Stderr)
+	if errors.Is(err, flag.ErrHelp) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
 	settings, path, loadErr := config.LoadDesktop()
 	a := app.NewWithID("com.github.Dylan-M.Go_DCC_Ex_Driver")
+	var saved stations.Repository
+	dbPath, dbErr := stationDatabasePath(a.Storage().RootURI())
+	if dbErr == nil {
+		var db *stations.Store
+		db, dbErr = stations.Open(dbPath)
+		if dbErr == nil {
+			saved = db
+			defer db.Close()
+		}
+	}
 	window := a.NewWindow("DCC-EX Native Throttle")
 	session := throttle.NewSession(settings, nil, func(s config.Settings) error { return config.Save(path, s) })
-	view := fyneui.New(window, session)
+	view := fyneui.New(window, session, fyneui.Options{Host: options.Host, Port: options.Port, Stations: saved})
+	if dbErr != nil {
+		session.Post(func(c *throttle.Controller) error {
+			c.Log("err", "Saved stations unavailable: "+dbErr.Error())
+			return nil
+		})
+	}
 	if loadErr != nil {
 		session.Post(func(c *throttle.Controller) error { c.Log("err", "Configuration: "+loadErr.Error()); return nil })
 	}
@@ -35,4 +74,20 @@ func main() {
 	window.ShowAndRun()
 	session.Close()
 	<-session.Done()
+	return nil
+}
+
+func stationDatabasePath(root fyne.URI) (string, error) {
+	if root == nil || root.Scheme() != "file" {
+		return "", errors.New("app storage must be a local directory")
+	}
+	path := root.Path()
+	if runtime.GOOS == "windows" && len(path) > 3 && path[0] == '/' && path[2] == ':' {
+		path = strings.TrimPrefix(path, "/")
+	}
+	path = filepath.FromSlash(path)
+	if !filepath.IsAbs(path) {
+		return "", errors.New("app storage path must be absolute")
+	}
+	return filepath.Join(path, "stations.db"), nil
 }

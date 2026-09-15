@@ -4,7 +4,18 @@ Functionally equivalent Go/Fyne port of [RB211/DCC_Ex_Driver](https://github.com
 
 ## Status
 
-**In progress.** This is a bounded implementation slice focusing on the native DCC-EX protocol layer, independent of the GUI. The `dccex/protocol` package provides frame extraction, message parsing, and command encoding for the DCC-EX native command protocol.
+**In progress.** Native Go/Fyne throttle, TCP/serial transport, protocol and controller layers are implemented, with unit, headless UI and actual-firmware emulator tests. Saved station profiles and host/port startup arguments are available. Physical hardware and full mobile app validation remain outstanding; this is not a release-ready application.
+
+## Connections and saved stations
+
+Launch with `dccex-driver --host localhost --port 2560` to prefill the TCP fields,
+then click **Connect**. Use the **Station** dropdown to load a saved connection,
+**Save…** to save current settings, or **Delete…** to remove a profile. Profiles
+use bbolt in the platform's private app storage; loading or passing arguments
+does not automatically connect or overwrite saved data.
+
+See [saved stations and platform scope](stations/README.md) and
+[firmware integration tests](integration/emulator/README.md).
 
 ## What it does
 
@@ -47,19 +58,17 @@ This protocol package is **GUI-independent** and **transport-neutral**. It does 
 
 ## Requirements
 
-- Go 1.22+ (standard library only for this slice)
+- Go 1.27+, with dependencies pinned in `go.mod`.
+- Native Fyne desktop builds require a working C compiler and the platform's graphics development dependencies. Headless tests use the `ci` build tag.
 
 ## Development
 
 ```bash
-# Initialize the module (already done by CI)
-go mod init github.com/Dylan-M/Go_DCC_Ex_Driver
-
-# Run tests
-go test ./...
+# Run unit and headless UI tests
+go test -tags ci ./...
 
 # Vet for issues
-go vet ./...
+go vet -tags ci ./...
 ```
 
 ## Protocol semantics preserved from Python implementation

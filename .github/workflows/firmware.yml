@@ -44,11 +44,18 @@ jobs:
       - name: Core and firmware tests (race detector enabled)
         env:
           DCCEX_LOG_DIR: ${{ github.workspace }}/integration/emulator/.work/logs
-        run: go test -race -tags firmware -count=1 -timeout=3m ./dccex/... ./throttle ./config ./integration
+        run: go test -race -tags firmware -count=1 -timeout=3m ./dccex/... ./throttle ./config ./stations ./startup ./integration
       - name: Static checks
-        run: go vet -tags firmware ./dccex/... ./throttle ./config ./integration
+        run: go vet -tags ci,firmware ./...
       - name: Fyne UI tests (headless test driver)
-        run: go test -tags ci -count=1 -timeout=2m ./ui/fyne
+        run: go test -tags ci -count=1 -timeout=2m ./ui/fyne ./cmd/dccex-driver
+      - name: Storage cross-compilation (not mobile runtime tests)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for target in windows/amd64 darwin/arm64 linux/amd64 android/arm64 ios/arm64; do
+            GOOS="${target%/*}" GOARCH="${target#*/}" CGO_ENABLED=0 go build ./stations ./startup
+          done
       - name: Retain diagnostics (not firmware binaries)
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -12,6 +12,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	p "github.com/Dylan-M/Go_DCC_Ex_Driver/dccex/protocol"
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/dccex/transport"
+	"github.com/Dylan-M/Go_DCC_Ex_Driver/stations"
 	th "github.com/Dylan-M/Go_DCC_Ex_Driver/throttle"
 	"image/color"
 	"strconv"
@@ -59,11 +60,33 @@ type View struct {
 	bits                                          [6]*widget.Check
 	console                                       *widget.List
 	logs                                          []th.LogEntry
+	stationStore                                  stations.Repository
+	savedStations                                 *widget.Select
+	saveStation, deleteStation                    *widget.Button
+	profiles                                      []stations.Profile
 }
 
 func entry(text string) *widget.Entry { e := widget.NewEntry(); e.SetText(text); return e }
-func New(window fyne.Window, s *th.Session) *View {
+
+type Options struct {
+	Host     string
+	Port     int
+	Stations stations.Repository
+}
+
+func New(window fyne.Window, s *th.Session, options ...Options) *View {
 	v := &View{Window: window, session: s}
+	o := Options{Host: stations.DefaultHost, Port: stations.DefaultPort}
+	if len(options) > 0 {
+		o = options[0]
+		if o.Host == "" {
+			o.Host = stations.DefaultHost
+		}
+		if o.Port == 0 {
+			o.Port = stations.DefaultPort
+		}
+	}
+	v.stationStore = o.Stations
 	v.status = widget.NewLabel("Disconnected")
 	v.mainPower = widget.NewButton("Main (Unknown)", func() { v.post(func(c *th.Controller) error { return c.TogglePower(p.Main) }) })
 	v.progPower = widget.NewButton("Prog (Unknown)", func() { v.post(func(c *th.Controller) error { return c.TogglePower(p.Prog) }) })
@@ -77,8 +100,8 @@ func New(window fyne.Window, s *th.Session) *View {
 	v.currentBar = widget.NewProgressBar()
 	v.currentBar.Min = 0
 	v.currentBar.Max = 1
-	v.host = entry("192.168.4.1")
-	v.port = entry("2560")
+	v.host = entry(o.Host)
+	v.port = entry(strconv.Itoa(o.Port))
 	v.baud = entry("115200")
 	v.devices = widget.NewSelectEntry(nil)
 	v.mode = widget.NewSelect([]string{"TCP", "Serial"}, nil)
@@ -134,7 +157,7 @@ func New(window fyne.Window, s *th.Session) *View {
 	connection := container.NewVBox(container.NewGridWithColumns(2,
 		container.NewBorder(nil, nil, widget.NewLabel("Connection"), nil, v.mode), v.connect),
 		container.NewGridWithColumns(2, widget.NewForm(widget.NewFormItem("Host", v.host), widget.NewFormItem("TCP port", v.port)), widget.NewForm(widget.NewFormItem("Serial port", v.devices), widget.NewFormItem("Baud", v.baud))),
-		container.NewHBox(refresh, v.status))
+		container.NewHBox(refresh, v.status), v.stationControls())
 	poll := widget.NewCheck("Poll current", func(on bool) {
 		if !v.rendering {
 			v.post(func(c *th.Controller) error { c.SetPoll(on); return nil })
