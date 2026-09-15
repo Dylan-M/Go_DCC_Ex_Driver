@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/config"
@@ -83,17 +84,17 @@ func TestPowerButtonsFollowStationReplies(t *testing.T) {
 	expectCommand("<s>")
 	expectCommand("<t 3>")
 	reply("<p0>")
-	waitState("MAIN: OFF", "PROG: OFF")
+	waitState("Main (Off)", "Prog (Off)")
 	for _, step := range []struct {
 		button                   *widget.Button
 		command, ack, main, prog string
 	}{
-		{v.mainPower, "<1 MAIN>", "<p1 MAIN>", "MAIN: ON", "PROG: OFF"},
-		{v.allOn, "<1>", "<p1>", "MAIN: ON", "PROG: ON"},
-		{v.progPower, "<0 PROG>", "<p0 PROG>", "MAIN: ON", "PROG: OFF"},
-		{v.mainPower, "<0 MAIN>", "<p0 MAIN>", "MAIN: OFF", "PROG: OFF"},
-		{v.progPower, "<1 PROG>", "<p1 PROG>", "MAIN: OFF", "PROG: ON"},
-		{v.allOff, "<0>", "<p0>", "MAIN: OFF", "PROG: OFF"},
+		{v.mainPower, "<1 MAIN>", "<p1 MAIN>", "Main (On)", "Prog (Off)"},
+		{v.allOn, "<1>", "<p1>", "Main (On)", "Prog (On)"},
+		{v.progPower, "<0 PROG>", "<p0 PROG>", "Main (On)", "Prog (Off)"},
+		{v.mainPower, "<0 MAIN>", "<p0 MAIN>", "Main (Off)", "Prog (Off)"},
+		{v.progPower, "<1 PROG>", "<p1 PROG>", "Main (Off)", "Prog (On)"},
+		{v.allOff, "<0>", "<p0>", "Main (Off)", "Prog (Off)"},
 	} {
 		beforeMain, beforeProg := v.mainPower.Text, v.progPower.Text
 		test.Tap(step.button)
@@ -105,13 +106,77 @@ func TestPowerButtonsFollowStationReplies(t *testing.T) {
 		waitState(step.main, step.prog)
 	}
 	reply("<p1 MAIN>") // Also reflect another throttle's changes.
-	waitState("MAIN: ON", "PROG: OFF")
+	waitState("Main (On)", "Prog (Off)")
 	if v.mainPower.Importance != widget.HighImportance || v.progPower.Importance == widget.HighImportance {
 		t.Fatal("ON/OFF styling")
 	}
+	// The two-position selector names a destination instead of toggling blindly.
+	if !v.direction.Horizontal || !v.direction.Required || v.direction.Selected != "Fwd" {
+		t.Fatal("direction selector must show one current direction")
+	}
+	options := test.WidgetRenderer(v.direction).Objects()
+	waitDirection := func(want int) {
+		t.Helper()
+		deadline := time.NewTimer(5 * time.Second)
+		defer deadline.Stop()
+		for {
+			select {
+			case state, ok := <-s.Updates():
+				if !ok {
+					t.Fatal("session ended before direction update")
+				}
+				v.Render(state)
+				if state.Direction == want {
+					return
+				}
+			case <-deadline.C:
+				t.Fatal("direction update timed out")
+			}
+		}
+	}
+	assertNoCommand := func() {
+		t.Helper()
+		processed := make(chan struct{})
+		if err := s.Post(func(*th.Controller) error { close(processed); return nil }); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-processed:
+		case <-time.After(5 * time.Second):
+			t.Fatal("session barrier timed out")
+		}
+		select {
+		case cmd := <-commands:
+			t.Fatal("unexpected direction command", cmd)
+		default:
+		}
+	}
+	test.Tap(options[0].(fyne.Tappable)) // Rev
+	expectCommand("<t 3 0 0>")
+	waitDirection(0)
+	if v.direction.Selected != "Rev" {
+		t.Fatal("reverse not selected")
+	}
+	test.Tap(options[0].(fyne.Tappable)) // Already selected: no toggle or deselection.
+	assertNoCommand()
+	if v.direction.Selected != "Rev" {
+		t.Fatal("selected direction was cleared")
+	}
+	test.Tap(options[1].(fyne.Tappable)) // Fwd
+	expectCommand("<t 3 0 1>")
+	waitDirection(1)
+	reply("<l 3 0 0 0>") // Another throttle selects reverse.
+	waitDirection(0)
+	if v.direction.Selected != "Rev" {
+		t.Fatal("external direction change not displayed")
+	}
+	assertNoCommand() // Rendering a station update must not echo a command.
 	peer.Close()
-	waitState("MAIN: UNKNOWN", "PROG: UNKNOWN")
+	waitState("Main (Unknown)", "Prog (Unknown)")
 	if !v.mainPower.Disabled() || !v.progPower.Disabled() || !v.allOn.Disabled() || !v.allOff.Disabled() {
 		t.Fatal("disconnected controls enabled")
+	}
+	if !v.direction.Disabled() {
+		t.Fatal("disconnected direction selector enabled")
 	}
 }

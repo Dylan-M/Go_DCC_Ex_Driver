@@ -197,7 +197,18 @@ func (c *Controller) Tick(now time.Time) error {
 	return c.transmit(speed, c.state.Direction, now)
 }
 func (c *Controller) Direction(now time.Time) error {
-	dir := 1 - c.state.Direction
+	return c.SetDirection(1-c.state.Direction, now)
+}
+
+// Explicit selection must not invert direction when a stale UI event is queued,
+// or resend a command when the already-selected direction is tapped.
+func (c *Controller) SetDirection(dir int, now time.Time) error {
+	if dir != 0 && dir != 1 {
+		return errors.New("direction must be 0 (reverse) or 1 (forward)")
+	}
+	if dir == c.state.Direction {
+		return nil
+	}
 	if err := c.transmit(c.state.Speed, dir, now); err != nil {
 		return err
 	}

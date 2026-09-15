@@ -24,11 +24,11 @@ func TestPersistentPowerIndicators(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, step := range []struct{ frame, main, prog string }{
-		{"<p0>", "MAIN: OFF", "PROG: OFF"},
-		{"<p1 MAIN>", "MAIN: ON", "PROG: OFF"},
-		{"<p1 PROG>", "MAIN: ON", "PROG: ON"},
-		{"<p0 MAIN>", "MAIN: OFF", "PROG: ON"},
-		{"<p2 PROG>", "MAIN: OFF", "PROG: OVERLOAD"},
+		{"<p0>", "Main (Off)", "Prog (Off)"},
+		{"<p1 MAIN>", "Main (On)", "Prog (Off)"},
+		{"<p1 PROG>", "Main (On)", "Prog (On)"},
+		{"<p0 MAIN>", "Main (Off)", "Prog (On)"},
+		{"<p2 PROG>", "Main (Off)", "Prog (Overload)"},
 	} {
 		e, err := p.Parse(step.frame)
 		if err != nil {
@@ -45,7 +45,7 @@ func TestPersistentPowerIndicators(t *testing.T) {
 	}
 	c.Detach("lost connection")
 	v.Render(c.Snapshot())
-	if v.mainPower.Text != "MAIN: UNKNOWN" || v.progPower.Text != "PROG: UNKNOWN" {
+	if v.mainPower.Text != "Main (Unknown)" || v.progPower.Text != "Prog (Unknown)" {
 		t.Fatal("stale disconnected display")
 	}
 }

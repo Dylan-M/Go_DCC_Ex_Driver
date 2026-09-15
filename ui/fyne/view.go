@@ -49,8 +49,8 @@ type View struct {
 	current                                       *canvas.Text
 	currentBar                                    *widget.ProgressBar
 	speed                                         *widget.Slider
-	direction, connect                            *widget.Button
-	directionTheme                                *container.ThemeOverride
+	connect                                       *widget.Button
+	direction                                     *widget.RadioGroup
 	cab, host, port, baud, progAddress, progValue *widget.Entry
 	devices                                       *widget.SelectEntry
 	mode                                          *widget.Select
@@ -65,8 +65,8 @@ func entry(text string) *widget.Entry { e := widget.NewEntry(); e.SetText(text);
 func New(window fyne.Window, s *th.Session) *View {
 	v := &View{Window: window, session: s}
 	v.status = widget.NewLabel("Disconnected")
-	v.mainPower = widget.NewButton("MAIN: UNKNOWN", func() { v.post(func(c *th.Controller) error { return c.TogglePower(p.Main) }) })
-	v.progPower = widget.NewButton("PROG: UNKNOWN", func() { v.post(func(c *th.Controller) error { return c.TogglePower(p.Prog) }) })
+	v.mainPower = widget.NewButton("Main (Unknown)", func() { v.post(func(c *th.Controller) error { return c.TogglePower(p.Main) }) })
+	v.progPower = widget.NewButton("Prog (Unknown)", func() { v.post(func(c *th.Controller) error { return c.TogglePower(p.Prog) }) })
 	v.allOn = widget.NewButton("All On", func() { v.post(func(c *th.Controller) error { return c.Power(true, p.All) }) })
 	v.allOff = widget.NewButton("All Off", func() { v.post(func(c *th.Controller) error { return c.Power(false, p.All) }) })
 	v.renderPowerControls(th.State{})
@@ -172,9 +172,21 @@ func (v *View) runTab() fyne.CanvasObject {
 		}
 	}
 	selectCab := widget.NewButton("Select", func() { v.cab.OnSubmitted(v.cab.Text) })
-	v.direction = widget.NewButton("FORWARD", func() { v.post(func(c *th.Controller) error { return c.Direction(time.Now()) }) })
-	v.direction.Importance = widget.HighImportance
-	v.directionTheme = container.NewThemeOverride(v.direction, accentTheme{theme.DefaultTheme(), green})
+	v.direction = widget.NewRadioGroup([]string{"Rev", "Fwd"}, nil)
+	v.direction.Horizontal = true
+	v.direction.Required = true
+	v.direction.SetSelected("Fwd")
+	v.direction.Disable()
+	v.direction.OnChanged = func(selected string) {
+		if v.rendering {
+			return
+		}
+		dir := 0
+		if selected == "Fwd" {
+			dir = 1
+		}
+		v.post(func(c *th.Controller) error { return c.SetDirection(dir, time.Now()) })
+	}
 	stop := widget.NewButton("STOP", func() { v.post(func(c *th.Controller) error { return c.Stop(time.Now()) }) })
 	estop := widget.NewButton("E-STOP ALL", func() { v.post(func(c *th.Controller) error { return c.Emergency() }) })
 	v.speedLabel = widget.NewLabel("Speed: 0")
@@ -186,7 +198,7 @@ func (v *View) runTab() fyne.CanvasObject {
 			v.post(func(c *th.Controller) error { return c.MoveSpeed(int(value)) })
 		}
 	}
-	controls := container.NewGridWithColumns(4, container.NewBorder(nil, nil, nil, selectCab, v.cab), v.directionTheme, colored(stop, orange), colored(estop, red))
+	controls := container.NewGridWithColumns(4, container.NewBorder(nil, nil, nil, selectCab, v.cab), v.direction, colored(stop, orange), colored(estop, red))
 	var funcs []fyne.CanvasObject
 	for n := 0; n < 29; n++ {
 		v.functions[n] = newFunctionButton(fmt.Sprintf("F%d", n), func() { v.post(func(c *th.Controller) error { return c.Function(n, true) }) }, func() { v.post(func(c *th.Controller) error { return c.Function(n, false) }) }, func() { v.showError(v.session.SetToggle(n, !v.last.Toggle[n])) })
@@ -326,13 +338,15 @@ func (v *View) Render(s th.State) {
 		v.cab.SetText(fmt.Sprint(s.Cab))
 	}
 	if s.Direction == 1 {
-		v.direction.SetText("FORWARD")
-		v.directionTheme.Theme = accentTheme{theme.DefaultTheme(), green}
+		v.direction.SetSelected("Fwd")
 	} else {
-		v.direction.SetText("REVERSE")
-		v.directionTheme.Theme = accentTheme{theme.DefaultTheme(), orange}
+		v.direction.SetSelected("Rev")
 	}
-	v.directionTheme.Refresh()
+	if s.Connected {
+		v.direction.Enable()
+	} else {
+		v.direction.Disable()
+	}
 	for n, b := range v.functions {
 		label := fmt.Sprintf("F%d", n)
 		if s.Toggle[n] {
