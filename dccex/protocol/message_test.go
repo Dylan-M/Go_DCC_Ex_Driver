@@ -21,6 +21,7 @@ func TestParseKnownMessages(t *testing.T) {
 		{"<p1 JOIN>", p.TrackPower{State: p.On, Track: "JOIN"}},
 		{"<c 12>", p.CurrentInfo{CurrentMA: 12}},
 		{"<c 15 400 600>", p.CurrentInfo{CurrentMA: 15, MaxMA: 400, TripMA: 600, HasLimits: true}},
+		{"<c CurrentMAIN 0 C Milli 0 1497 1 1497>", p.CurrentInfo{CurrentMA: 0, MaxMA: 1497, TripMA: 1497, HasLimits: true}},
 		{"<c \"CurrentMAIN\" 15 C \"Milli\" \"0\" 400 \"1\" 600>", p.CurrentInfo{CurrentMA: 15, MaxMA: 400, TripMA: 600, HasLimits: true}},
 		{"<c \"CurrentMAIN\" 0 C \"Milli\" \"0\" 0 \"1\" 0>", p.CurrentInfo{HasLimits: true}},
 		{"<v 29 -1>", p.CVResult{Operation: p.Read, CV: 29, Value: -1}},
@@ -85,6 +86,7 @@ func TestRejectMalformedKnownMessages(t *testing.T) {
 		"<l>", "<l 0 0 0 0>", "<l -1 0 0 0>", "<l 10294 0 0 0>", "<l 3 -2 0 0>", "<l 3 0 256 0>", "<l 3 0 -1 0>", "<l 3 0 0 -1>", "<l 3 0 0 4294967296>", "<l 3 0 0 0 extra>", "<l +3 0 0 0>", "<l x 0 0 0>", "<l 3 0 0 999999999999999999999999999>",
 		"<p0 MAIN PROG>", "<p1 \"MAIN\">", "<v 29>", "<v 0 1>", "<v 1025 1>", "<v 29 -2>", "<v 29 256>", "<v 29 x>", "<v - 0>", "<v 29 1 extra>", "<r>", "<r 0>", "<r -2>", "<w 3 4>", "<w 10294>",
 		"<c>", "<c 1 2>", "<c 1 bad 3>", "<c \"CurrentMAIN\" bad C \"Milli\" \"0\" 500 \"1\" 400>",
+		"<c CurrentMAIN\" 0 C Milli 0 1497 1 1497>", "<c CurrentMAIN 0 C Milli 2 1497 1 1497>",
 		"<c \"CurrentMAIN\" 1 C \"Milli\" \"0\" bad \"1\" 400>", "<c \"CurrentMAIN\" 1 C \"Milli\" \"0\" 500 \"1\" bad>",
 		"<c \"CurrentMAIN\" 1 X \"Milli\" \"0\" 500 \"1\" 400>",
 		"<" + strings.Repeat("x", p.MaxFrameSize) + ">"}

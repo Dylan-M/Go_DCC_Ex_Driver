@@ -178,7 +178,9 @@ func parseCurrent(m Message, args []string) (Event, error) {
 	case 1, 3:
 		values = args
 	case 8:
-		if args[0] != "\"CurrentMAIN\"" || args[2] != "C" || args[3] != "\"Milli\"" || args[4] != "\"0\"" || args[6] != "\"1\"" {
+		// Firmware 5.6.1 emits bare labels; also retain the quoted form.
+		label := func(value, want string) bool { return value == want || value == "\""+want+"\"" }
+		if !label(args[0], "CurrentMAIN") || args[2] != "C" || !label(args[3], "Milli") || !label(args[4], "0") || !label(args[6], "1") {
 			return nil, ErrMalformed
 		}
 		values = []string{args[1], args[5], args[7]}

@@ -1,0 +1,8 @@
+{
+  "name": "dccex-firmware-test-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": { "test": "node --test mega.test.cjs" },
+  "dependencies": { "avr8js": "0.21.1" },
+  "engines": { "node": ">=24" }
+}
