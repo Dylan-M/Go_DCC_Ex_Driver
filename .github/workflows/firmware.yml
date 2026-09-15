@@ -47,6 +47,8 @@ jobs:
         run: go test -race -tags firmware -count=1 -timeout=3m ./dccex/... ./throttle ./config ./integration
       - name: Static checks
         run: go vet -tags firmware ./dccex/... ./throttle ./config ./integration
+      - name: Fyne UI tests (headless test driver)
+        run: go test -tags ci -count=1 -timeout=2m ./ui/fyne
       - name: Retain diagnostics (not firmware binaries)
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

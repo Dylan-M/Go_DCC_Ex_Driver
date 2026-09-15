@@ -3,6 +3,7 @@ package protocol
 import "fmt"
 
 func EncodeStatus() string        { return "<s>" }
+func EncodeTrackQuery() string    { return "<=>" }
 func EncodeEmergencyStop() string { return "<!>" }
 func EncodeCurrentQuery() string  { return "<c>" }
 func EncodeReadAddress() string   { return "<R>" }

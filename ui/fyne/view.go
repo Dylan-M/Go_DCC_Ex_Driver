@@ -44,7 +44,8 @@ type View struct {
 	session                                       *th.Session
 	rendering                                     bool
 	last                                          th.State
-	status, power, speedLabel, result, cv29Label  *widget.Label
+	status, speedLabel, result, cv29Label         *widget.Label
+	mainPower, progPower                          *canvas.Text
 	current                                       *canvas.Text
 	currentBar                                    *widget.ProgressBar
 	speed                                         *widget.Slider
@@ -64,7 +65,10 @@ func entry(text string) *widget.Entry { e := widget.NewEntry(); e.SetText(text);
 func New(window fyne.Window, s *th.Session) *View {
 	v := &View{Window: window, session: s}
 	v.status = widget.NewLabel("Disconnected")
-	v.power = widget.NewLabel("power: unknown")
+	v.mainPower = canvas.NewText("MAIN: UNKNOWN", theme.Color(theme.ColorNameForeground))
+	v.progPower = canvas.NewText("PROG: UNKNOWN", theme.Color(theme.ColorNameForeground))
+	v.mainPower.TextStyle.Bold = true
+	v.progPower.TextStyle.Bold = true
 	v.result = widget.NewLabel("result: --")
 	v.result.Wrapping = fyne.TextWrapWord
 	v.current = canvas.NewText("current: --", theme.Color(theme.ColorNameForeground))
@@ -146,7 +150,7 @@ func New(window fyne.Window, s *th.Session) *View {
 		}
 	})
 	poll.SetChecked(true)
-	power := container.NewVBox(container.NewGridWithColumns(6, powers...), v.power, container.NewBorder(nil, nil, v.current, poll, v.currentBar))
+	power := container.NewVBox(container.NewGridWithColumns(6, powers...), container.NewGridWithColumns(2, v.mainPower, v.progPower), container.NewBorder(nil, nil, v.current, poll, v.currentBar))
 	tabs := container.NewAppTabs(container.NewTabItem("Run", v.runTab()), container.NewTabItem("Programming", v.programTab()))
 	console := v.consoleView()
 	split := container.NewVSplit(tabs, console)
@@ -319,7 +323,8 @@ func (v *View) Render(s th.State) {
 	v.rendering = true
 	defer func() { v.rendering = false }()
 	v.status.SetText(s.Status)
-	v.power.SetText(s.Power)
+	renderPower(v.mainPower, "MAIN", s.MainPower)
+	renderPower(v.progPower, "PROG", s.ProgPower)
 	v.speed.SetValue(float64(s.Speed))
 	v.speedLabel.SetText(fmt.Sprintf("Speed: %d", s.Speed))
 	if s.Connected {

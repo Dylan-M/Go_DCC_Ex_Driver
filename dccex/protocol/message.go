@@ -38,6 +38,12 @@ type TrackPower struct {
 	Track string
 }
 
+// TrackMode associates a physical output (A-H) with its configured role.
+type TrackMode struct {
+	Message
+	Track, Mode string
+}
+
 // HasLimits distinguishes missing limits from explicitly zero values.
 type CurrentInfo struct {
 	Message
@@ -119,6 +125,21 @@ func Parse(frame string) (Event, error) {
 			speed = low - 1
 		}
 		return LocoState{m, int(values[0]), int(values[1]), raw, speed, int(raw >> 7), low == 1, uint32(values[3])}, nil
+	case "=":
+		if len(args) < 2 || len(args) > 3 || len(args[0]) != 1 || args[0][0] < 'A' || args[0][0] > 'H' {
+			return nil, ErrMalformed
+		}
+		for _, ch := range args[1] {
+			if !(ch >= 'A' && ch <= 'Z' || ch == '_') {
+				return nil, ErrMalformed
+			}
+		}
+		if len(args) == 3 {
+			if _, err := number("address", args[2], 0, 10293); err != nil {
+				return nil, err
+			}
+		}
+		return TrackMode{m, args[0], args[1]}, nil
 	case "p0", "p1", "p2":
 		if len(args) > 1 {
 			return nil, ErrMalformed

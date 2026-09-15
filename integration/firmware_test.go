@@ -350,3 +350,24 @@ func TestFirmwareSessionDisconnect(t *testing.T) {
 		}
 	}
 }
+
+func TestFirmwareIndependentPowerIndicators(t *testing.T) {
+	f := startFirmware(t)
+	s := session(t, f)
+	awaitState(t, s, func(v throttle.State) bool { return v.MainPower == p.Off && v.ProgPower == p.Off })
+	for _, step := range []struct {
+		track      p.Track
+		on         bool
+		main, prog p.PowerState
+	}{
+		{p.All, true, p.On, p.On},
+		{p.Main, false, p.Off, p.On},
+		{p.Prog, false, p.Off, p.Off},
+		{p.Main, true, p.On, p.Off},
+		{p.Prog, true, p.On, p.On},
+		{p.All, false, p.Off, p.Off},
+	} {
+		post(t, s, func(c *throttle.Controller) error { return c.Power(step.on, step.track) })
+		awaitState(t, s, func(v throttle.State) bool { return v.MainPower == step.main && v.ProgPower == step.prog })
+	}
+}

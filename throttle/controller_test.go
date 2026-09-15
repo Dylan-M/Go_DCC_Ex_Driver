@@ -32,7 +32,7 @@ func setup(t *testing.T) (*th.Controller, *sender) {
 	if err := ctrl.Attach(s, "test"); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(s.commands, []string{"<s>", "<t 3>"}) {
+	if !reflect.DeepEqual(s.commands, []string{"<=>", "<s>", "<t 3>"}) {
 		t.Fatal("handshake", s.commands)
 	}
 	s.commands = nil
@@ -52,7 +52,7 @@ func TestOfflineSpeedNeverReplayed(t *testing.T) {
 	s := &sender{}
 	c.Attach(s, "test")
 	c.Tick(time.Now())
-	if len(s.commands) != 2 {
+	if len(s.commands) != 3 {
 		t.Fatal("offline speed replayed", s.commands)
 	}
 	c.MoveSpeed(70)
@@ -60,7 +60,7 @@ func TestOfflineSpeedNeverReplayed(t *testing.T) {
 	s2 := &sender{}
 	c.Attach(s2, "again")
 	c.Tick(time.Now().Add(time.Second))
-	if len(s2.commands) != 2 {
+	if len(s2.commands) != 3 {
 		t.Fatal("pending survived reconnect")
 	}
 }

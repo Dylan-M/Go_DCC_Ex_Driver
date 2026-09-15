@@ -21,6 +21,7 @@ type State struct {
 	Cab, Speed, Direction                       int
 	Functions, Toggle                           [29]bool
 	Power                                       string
+	MainPower, ProgPower                        p.PowerState
 	Overload                                    bool
 	CurrentMA, MaxMA, TripMA                    int
 	HasCurrent, HasLimits                       bool
@@ -37,6 +38,8 @@ type Controller struct {
 	lastSpeed, lastDirection int
 	lastKnown                bool
 	lastSent                 time.Time
+	trackModes               [8]string
+	trackPowers              [8]p.PowerState
 }
 
 func New(toggle [29]bool) *Controller {
@@ -65,6 +68,9 @@ func (c *Controller) Attach(s Sender, description string) error {
 	c.pending = nil
 	c.lastKnown = false
 	c.Log("info", c.state.Status)
+	if err := c.send(p.EncodeTrackQuery(), false); err != nil {
+		return err
+	}
 	if err := c.send(p.EncodeStatus(), false); err != nil {
 		return err
 	}
@@ -81,6 +87,9 @@ func (c *Controller) Detach(reason string) {
 	c.pending = nil
 	c.lastKnown = false
 	c.state.Power = "power: unknown"
+	c.state.MainPower, c.state.ProgPower = "", ""
+	c.trackModes = [8]string{}
+	c.trackPowers = [8]p.PowerState{}
 	c.state.Overload = false
 	c.state.HasCurrent = false
 	c.state.HasLimits = false
@@ -332,7 +341,13 @@ func (c *Controller) Receive(e p.Event) {
 		}
 	case p.TrackPower:
 		c.state.Power = fmt.Sprintf("power: %s %s", v.Track, v.State)
-		c.state.Overload = v.State == p.Overload
+		c.receivePower(v)
+	case p.TrackMode:
+		if len(v.Track) == 1 && v.Track[0] >= 'A' && v.Track[0] <= 'H' {
+			c.trackModes[v.Track[0]-'A'] = v.Mode
+			c.state.MainPower, c.state.ProgPower = "", ""
+			c.updateTrackPower()
+		}
 	case p.CurrentInfo:
 		c.state.CurrentMA = v.CurrentMA
 		c.state.HasCurrent = true
