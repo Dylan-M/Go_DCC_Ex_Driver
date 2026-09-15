@@ -1,9 +1,29 @@
 package throttle
 
 import (
+	"errors"
 	p "github.com/Dylan-M/Go_DCC_Ex_Driver/dccex/protocol"
 	"strings"
 )
+
+// Decide in the controller's serialized event loop, using reported state rather
+// than a potentially stale UI snapshot. Do not optimistically change indicators.
+func (c *Controller) TogglePower(track p.Track) error {
+	var state p.PowerState
+	switch track {
+	case p.Main:
+		state = c.state.MainPower
+	case p.Prog:
+		state = c.state.ProgPower
+	default:
+		return errors.New("only MAIN and PROG can be toggled")
+	}
+	if !c.state.Connected || state == "" {
+		return errors.New("track power state is not known")
+	}
+	// Mixed or faulted outputs are switched OFF, never implicitly re-energized.
+	return c.Power(state == p.Off, track)
+}
 
 func (c *Controller) receivePower(v p.TrackPower) {
 	switch v.Track {

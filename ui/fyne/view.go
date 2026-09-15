@@ -45,7 +45,7 @@ type View struct {
 	rendering                                     bool
 	last                                          th.State
 	status, speedLabel, result, cv29Label         *widget.Label
-	mainPower, progPower                          *canvas.Text
+	mainPower, progPower, allOn, allOff           *widget.Button
 	current                                       *canvas.Text
 	currentBar                                    *widget.ProgressBar
 	speed                                         *widget.Slider
@@ -65,10 +65,11 @@ func entry(text string) *widget.Entry { e := widget.NewEntry(); e.SetText(text);
 func New(window fyne.Window, s *th.Session) *View {
 	v := &View{Window: window, session: s}
 	v.status = widget.NewLabel("Disconnected")
-	v.mainPower = canvas.NewText("MAIN: UNKNOWN", theme.Color(theme.ColorNameForeground))
-	v.progPower = canvas.NewText("PROG: UNKNOWN", theme.Color(theme.ColorNameForeground))
-	v.mainPower.TextStyle.Bold = true
-	v.progPower.TextStyle.Bold = true
+	v.mainPower = widget.NewButton("MAIN: UNKNOWN", func() { v.post(func(c *th.Controller) error { return c.TogglePower(p.Main) }) })
+	v.progPower = widget.NewButton("PROG: UNKNOWN", func() { v.post(func(c *th.Controller) error { return c.TogglePower(p.Prog) }) })
+	v.allOn = widget.NewButton("All On", func() { v.post(func(c *th.Controller) error { return c.Power(true, p.All) }) })
+	v.allOff = widget.NewButton("All Off", func() { v.post(func(c *th.Controller) error { return c.Power(false, p.All) }) })
+	v.renderPowerControls(th.State{})
 	v.result = widget.NewLabel("result: --")
 	v.result.Wrapping = fyne.TextWrapWord
 	v.current = canvas.NewText("current: --", theme.Color(theme.ColorNameForeground))
@@ -134,23 +135,13 @@ func New(window fyne.Window, s *th.Session) *View {
 		container.NewBorder(nil, nil, widget.NewLabel("Connection"), nil, v.mode), v.connect),
 		container.NewGridWithColumns(2, widget.NewForm(widget.NewFormItem("Host", v.host), widget.NewFormItem("TCP port", v.port)), widget.NewForm(widget.NewFormItem("Serial port", v.devices), widget.NewFormItem("Baud", v.baud))),
 		container.NewHBox(refresh, v.status))
-	var powers []fyne.CanvasObject
-	for _, track := range []p.Track{p.All, p.Main, p.Prog} {
-		for _, on := range []bool{true, false} {
-			label := string(track) + " OFF"
-			if on {
-				label = string(track) + " ON"
-			}
-			powers = append(powers, widget.NewButton(label, func() { v.post(func(c *th.Controller) error { return c.Power(on, track) }) }))
-		}
-	}
 	poll := widget.NewCheck("Poll current", func(on bool) {
 		if !v.rendering {
 			v.post(func(c *th.Controller) error { c.SetPoll(on); return nil })
 		}
 	})
 	poll.SetChecked(true)
-	power := container.NewVBox(container.NewGridWithColumns(6, powers...), container.NewGridWithColumns(2, v.mainPower, v.progPower), container.NewBorder(nil, nil, v.current, poll, v.currentBar))
+	power := container.NewVBox(container.NewGridWithColumns(4, v.allOn, v.allOff, v.mainPower, v.progPower), container.NewBorder(nil, nil, v.current, poll, v.currentBar))
 	tabs := container.NewAppTabs(container.NewTabItem("Run", v.runTab()), container.NewTabItem("Programming", v.programTab()))
 	console := v.consoleView()
 	split := container.NewVSplit(tabs, console)
@@ -323,8 +314,7 @@ func (v *View) Render(s th.State) {
 	v.rendering = true
 	defer func() { v.rendering = false }()
 	v.status.SetText(s.Status)
-	renderPower(v.mainPower, "MAIN", s.MainPower)
-	renderPower(v.progPower, "PROG", s.ProgPower)
+	v.renderPowerControls(s)
 	v.speed.SetValue(float64(s.Speed))
 	v.speedLabel.SetText(fmt.Sprintf("Speed: %d", s.Speed))
 	if s.Connected {

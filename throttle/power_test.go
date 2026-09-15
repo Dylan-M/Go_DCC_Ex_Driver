@@ -58,3 +58,34 @@ func TestMappedTrackPowerAndOverload(t *testing.T) {
 		t.Fatal("multiple MAIN outputs not aggregated")
 	}
 }
+
+func TestTogglePowerUsesReportedState(t *testing.T) {
+	c, sender := setup(t)
+	if c.TogglePower(p.Main) == nil {
+		t.Fatal("unknown state accepted")
+	}
+	if c.TogglePower(p.All) == nil {
+		t.Fatal("ALL is not a toggle")
+	}
+	for _, step := range []struct{ frame, command string }{
+		{"<p0 MAIN>", "<1 MAIN>"},
+		{"<p1 MAIN>", "<0 MAIN>"},
+		{"<p2 MAIN>", "<0 MAIN>"},
+	} {
+		receive(t, c, step.frame)
+		before := c.Snapshot().MainPower
+		if err := c.TogglePower(p.Main); err != nil {
+			t.Fatal(err)
+		}
+		if got := sender.commands[len(sender.commands)-1]; got != step.command {
+			t.Fatal(got)
+		}
+		if c.Snapshot().MainPower != before {
+			t.Fatal("state changed without reply")
+		}
+	}
+	c.Detach("lost")
+	if c.TogglePower(p.Main) == nil {
+		t.Fatal("disconnected toggle accepted")
+	}
+}
