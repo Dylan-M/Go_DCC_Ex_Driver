@@ -2,6 +2,7 @@ package fyneui
 
 import (
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/test"
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/config"
 	th "github.com/Dylan-M/Go_DCC_Ex_Driver/throttle"
@@ -19,6 +20,39 @@ func TestTabbedThrottles(t *testing.T) {
 	v := New(w, s)
 	if len(v.tabs.Items) != 3 || v.tabs.Items[0].Text != "Connection" || v.tabs.Items[1].Text != "Run" || v.tabs.Items[2].Text != "Programming" {
 		t.Fatal("top-level tab layout")
+	}
+	// Station power and current belong exclusively inside Connection, not
+	// in a persistent header above all three tabs.
+	split, ok := w.Content().(*container.Split)
+	if !ok || split.Leading != v.tabs {
+		t.Fatal("unexpected controls outside the tab layout")
+	}
+	var contains func(fyne.CanvasObject, fyne.CanvasObject) bool
+	contains = func(root, target fyne.CanvasObject) bool {
+		if root == target {
+			return true
+		}
+		switch obj := root.(type) {
+		case *fyne.Container:
+			for _, child := range obj.Objects {
+				if contains(child, target) {
+					return true
+				}
+			}
+		case *container.Scroll:
+			return contains(obj.Content, target)
+		}
+		return false
+	}
+	for _, control := range []fyne.CanvasObject{v.allOn, v.allOff, v.mainPower, v.progPower, v.current, v.currentBar} {
+		if !contains(v.tabs.Items[0].Content, control) {
+			t.Fatal("station control missing from Connection")
+		}
+		for _, tab := range v.tabs.Items[1:] {
+			if contains(tab.Content, control) {
+				t.Fatal("station control appears outside Connection")
+			}
+		}
 	}
 	wait := func(match func(th.State) bool) {
 		t.Helper()

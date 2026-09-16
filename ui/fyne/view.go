@@ -166,6 +166,8 @@ func New(window fyne.Window, s *th.Session, options ...Options) *View {
 	})
 	poll.SetChecked(true)
 	power := container.NewVBox(container.NewGridWithColumns(4, v.allOn, v.allOff, v.mainPower, v.progPower), container.NewBorder(nil, nil, v.current, poll, v.currentBar))
+	connection.Add(widget.NewSeparator())
+	connection.Add(power)
 	v.runTabs = container.NewDocTabs()
 	v.syncThrottles(th.State{Cab: 3, Throttles: []th.CabState{{Cab: 3, Direction: 1}}})
 	v.runTabs.OnSelected = func(tab *container.TabItem) {
@@ -209,7 +211,7 @@ func New(window fyne.Window, s *th.Session, options ...Options) *View {
 	console := v.consoleView()
 	split := container.NewVSplit(v.tabs, console)
 	split.Offset = 0.72
-	window.SetContent(container.NewBorder(power, nil, nil, nil, split))
+	window.SetContent(split)
 	window.Resize(fyne.NewSize(1050, 840))
 	return v
 }

@@ -21,8 +21,9 @@ See [saved stations and platform scope](stations/README.md) and
 
 ### Tabbed controls
 
-The main tabs are **Connection**, **Run**, and **Programming**. Run contains
-independent locomotive tabs: use **+ Throttle** to add an address, and a tab's
+The main tabs are **Connection**, **Run**, and **Programming**. Track power and
+current draw are in Connection. Run contains independent locomotive tabs:
+use **+ Throttle** to add an address, and a tab's
 close control to remove it. Stop a locomotive before closing or reassigning its
 throttle; at least one throttle stays open. Open throttle tabs are session-only.
 
