@@ -17,7 +17,9 @@ serial device/baud settings. Choose a profile to load it into the connection
 form, then click **Connect**. Loading never automatically connects or changes an
 active connection. **Save…** names the current settings; using an existing name
 requires replacement confirmation. **Delete…** also requires confirmation and
-only removes the local profile. Editing a name when saving creates a separate
+only removes the local profile. After deletion, the form returns to the actual
+active connection's settings without disconnecting it. When disconnected, the
+current editable settings stay unchanged. Editing a name when saving creates a separate
 profile; it does not silently rename or delete the old entry.
 
 Writes are transactional and synced by bbolt. A versioned schema prevents an

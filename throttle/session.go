@@ -85,7 +85,11 @@ func (s *Session) Connect(o Connection) error {
 		if o.Serial {
 			where = o.Device
 		}
-		return c.Attach(s.current, where)
+		err = c.Attach(s.current, where)
+		if c.state.Connected {
+			c.state.ActiveConnection = o
+		}
+		return err
 	})
 }
 func (s *Session) SetToggle(n int, on bool) error {

@@ -18,6 +18,7 @@ type LogEntry struct{ Kind, Text string }
 type State struct {
 	Throttles                                   []CabState
 	Connected                                   bool
+	ActiveConnection                            Connection
 	Status                                      string
 	Cab, Speed, Direction                       int
 	Functions, Toggle                           [29]bool
@@ -91,6 +92,7 @@ func (c *Controller) Detach(reason string) {
 	}
 	c.sender = nil
 	c.state.Connected = false
+	c.state.ActiveConnection = Connection{}
 	c.state.Status = reason
 	c.pending = nil
 	c.lastKnown = false

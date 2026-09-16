@@ -138,5 +138,22 @@ func (v *View) removeStation(name string) error {
 	if err := v.stationStore.Delete(name); err != nil {
 		return err
 	}
-	return v.reloadStations("")
+	if err := v.reloadStations(""); err != nil {
+		return err
+	}
+	if v.last.Connected {
+		// Restore the endpoint actually opened by the session, including CLI
+		// launches. The currently selected saved profile may be unrelated.
+		active := v.last.ActiveConnection
+		if active.Serial {
+			v.mode.SetSelected("Serial")
+			v.devices.SetText(active.Device)
+			v.baud.SetText(strconv.Itoa(active.Baud))
+		} else {
+			v.mode.SetSelected("TCP")
+			v.host.SetText(active.Host)
+			v.port.SetText(strconv.Itoa(active.Port))
+		}
+	}
+	return nil
 }
