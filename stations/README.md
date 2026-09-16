@@ -35,7 +35,11 @@ dccex-driver --host ::1 --port 2560
 dccex-driver --help
 ```
 
-Arguments prefill TCP fields; they neither auto-connect nor write a profile.
+Explicit `--host` or `--port` arguments prefill TCP fields and trigger one
+connection attempt at launch; an omitted setting uses its default. Without
+either argument, connection remains manual. Failures appear in the console
+and leave manual Connect available, without automatic retries. Arguments do
+not write or overwrite a profile.
 Defaults remain `192.168.4.1:2560`. Hostnames, IP addresses and bracketed IPv6
 addresses are accepted, but URLs and combined `host:port` strings are rejected.
 Ports must be 1-65535. Invalid arguments exit with status 2 before opening the

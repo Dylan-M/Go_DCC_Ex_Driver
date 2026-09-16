@@ -10,16 +10,17 @@ import (
 )
 
 type Options struct {
-	Host string
-	Port int
+	Host        string
+	Port        int
+	AutoConnect bool
 }
 
 func Parse(args []string, output io.Writer) (Options, error) {
 	o := Options{}
 	flags := flag.NewFlagSet("dccex-driver", flag.ContinueOnError)
 	flags.SetOutput(output)
-	flags.StringVar(&o.Host, "host", stations.DefaultHost, "TCP hostname or IP address (prefills UI; does not connect)")
-	flags.IntVar(&o.Port, "port", stations.DefaultPort, "TCP port, 1-65535")
+	flags.StringVar(&o.Host, "host", stations.DefaultHost, "TCP hostname or IP address (attempts connection on launch)")
+	flags.IntVar(&o.Port, "port", stations.DefaultPort, "TCP port, 1-65535 (attempts connection on launch)")
 	if err := flags.Parse(args); err != nil {
 		return o, err
 	}
@@ -34,5 +35,10 @@ func Parse(args []string, output io.Writer) (Options, error) {
 	if o.Port < 1 || o.Port > 65535 {
 		return o, errors.New("port must be 1-65535")
 	}
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "host" || f.Name == "port" {
+			o.AutoConnect = true
+		}
+	})
 	return o, nil
 }

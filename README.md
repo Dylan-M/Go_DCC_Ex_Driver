@@ -9,10 +9,13 @@ Functionally equivalent Go/Fyne port of [RB211/DCC_Ex_Driver](https://github.com
 ## Connections and saved stations
 
 Launch with `dccex-driver --host localhost --port 2560` to prefill the TCP fields,
-then click **Connect**. Use the **Station** dropdown to load a saved connection,
+and attempt a connection automatically. Either explicit option triggers one
+attempt, using the default for the omitted option. With no connection arguments,
+click **Connect** manually. A failed attempt is logged; there is no automatic retry.
+Use the **Station** dropdown to load a saved connection,
 **Save…** to save current settings, or **Delete…** to remove a profile. Profiles
 use bbolt in the platform's private app storage; loading or passing arguments
-does not automatically connect or overwrite saved data.
+does not overwrite saved data. Loading a saved profile does not automatically connect.
 
 See [saved stations and platform scope](stations/README.md) and
 [firmware integration tests](integration/emulator/README.md).
@@ -35,7 +38,9 @@ when disconnected.
 
 Each throttle maintains its own speed, direction, and function state. Switching
 tabs does not cancel another throttle's queued speed command. Direction uses a
-full-width sliding Rev/Fwd selector: tap either side or drag and release.
+full-width sliding Rev/Fwd selector: tap either side or drag and release. The
+thumb stays purple in both directions, with white selected text; disconnected
+controls use neutral disabled styling.
 Track power, emergency stop, and momentary/toggle function preferences are shared.
 Program on Main explicitly shows the selected Run locomotive as its target.
 

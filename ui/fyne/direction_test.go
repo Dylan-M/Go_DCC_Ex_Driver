@@ -3,6 +3,7 @@ package fyneui
 import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
+	"image/color"
 	"testing"
 )
 
@@ -14,9 +15,16 @@ func TestDirectionSwitchTapDragKeyboardAndSizing(t *testing.T) {
 	s := newDirectionSwitch(func(value string) { changes = append(changes, value) })
 	w.SetContent(s)
 	s.Resize(fyne.NewSize(240, 40))
+	renderer := test.WidgetRenderer(s).(*directionRenderer)
+	if renderer.thumb.FillColor != directionPurple || renderer.fwd.Color != color.White {
+		t.Fatal("forward must use purple with white selected text")
+	}
 	test.TapAt(s, fyne.NewPos(20, 20))
 	if s.Selected != "Rev" || len(changes) != 1 {
 		t.Fatal("tap reverse")
+	}
+	if renderer.thumb.FillColor != directionPurple || renderer.rev.Color != color.White {
+		t.Fatal("reverse must use the same purple with white selected text")
 	}
 	test.TapAt(s, fyne.NewPos(20, 20))
 	if len(changes) != 1 {
@@ -55,6 +63,9 @@ func TestDirectionSwitchTapDragKeyboardAndSizing(t *testing.T) {
 	dr := r.(*directionRenderer)
 	if dr.thumb.FillColor == dr.rev.Color {
 		t.Fatal("disabled selected label has no contrast")
+	}
+	if dr.thumb.FillColor == directionPurple {
+		t.Fatal("disabled selector must remain neutral")
 	}
 	for _, size := range []fyne.Size{fyne.NewSize(120, 36), fyne.NewSize(240, 40), fyne.NewSize(300, 48)} {
 		s.Resize(size)

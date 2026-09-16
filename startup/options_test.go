@@ -14,6 +14,9 @@ func TestParse(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if o.AutoConnect != (len(args) != 0) {
+			t.Fatal("auto-connect must require explicit connection arguments", o)
+		}
 		if len(args) == 0 && (o.Host != "192.168.4.1" || o.Port != 2560) {
 			t.Fatal(o)
 		}
@@ -33,5 +36,21 @@ func TestParse(t *testing.T) {
 	var output bytes.Buffer
 	if _, err := Parse([]string{"--help"}, &output); !errors.Is(err, flag.ErrHelp) || output.Len() == 0 {
 		t.Fatal("help", err)
+	}
+}
+
+func TestPartialConnectionArgumentsAutoConnect(t *testing.T) {
+	for _, args := range [][]string{{"--host", "localhost"}, {"--port=50825"}, {"--host=192.168.4.1"}} {
+		var output bytes.Buffer
+		o, err := Parse(args, &output)
+		if err != nil || !o.AutoConnect {
+			t.Fatal(args, o, err)
+		}
+		if args[0] == "--port=50825" && (o.Host != "192.168.4.1" || o.Port != 50825) {
+			t.Fatal("port-only must use default host", o)
+		}
+		if args[0] == "--host" && (o.Host != "localhost" || o.Port != 2560) {
+			t.Fatal("host-only must use default port", o)
+		}
 	}
 }

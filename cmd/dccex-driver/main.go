@@ -56,6 +56,12 @@ func run(args []string) error {
 	if loadErr != nil {
 		session.Post(func(c *throttle.Controller) error { c.Log("err", "Configuration: "+loadErr.Error()); return nil })
 	}
+	if err := connectOnLaunch(options, session.Connect); err != nil {
+		session.Post(func(c *throttle.Controller) error {
+			c.Log("err", "Startup connection: "+err.Error())
+			return nil
+		})
+	}
 	go func() {
 		for state := range session.Updates() {
 			s := state
@@ -75,6 +81,15 @@ func run(args []string) error {
 	session.Close()
 	<-session.Done()
 	return nil
+}
+
+// Session.Connect queues a single asynchronous attempt. Failure is reported by
+// the existing session/console path, leaving manual connection available.
+func connectOnLaunch(options startup.Options, connect func(throttle.Connection) error) error {
+	if !options.AutoConnect {
+		return nil
+	}
+	return connect(throttle.Connection{Host: options.Host, Port: options.Port})
 }
 
 func stationDatabasePath(root fyne.URI) (string, error) {

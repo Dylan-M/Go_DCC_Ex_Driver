@@ -8,6 +8,8 @@ import (
 	"image/color"
 )
 
+var directionPurple = color.NRGBA{R: 112, G: 66, B: 176, A: 255}
+
 // DirectionSwitch is a full-width segmented slider, not an action-labelled
 // button. Dragging previews movement; only release commits a direction.
 type DirectionSwitch struct {
@@ -146,7 +148,7 @@ func (r *directionRenderer) Refresh() {
 	if r.s.focused {
 		r.track.StrokeColor = theme.Color(theme.ColorNameFocus)
 	}
-	r.thumb.FillColor = theme.Color(theme.ColorNamePrimary)
+	r.thumb.FillColor = directionPurple
 	r.rev.Color = theme.Color(theme.ColorNameForeground)
 	r.fwd.Color = r.rev.Color
 	if r.s.Disabled() {
@@ -158,9 +160,9 @@ func (r *directionRenderer) Refresh() {
 	r.fwd.TextStyle.Bold = r.s.Selected == "Fwd"
 	if !r.s.Disabled() {
 		if r.s.Selected == "Rev" {
-			r.rev.Color = theme.Color(theme.ColorNameForegroundOnPrimary)
+			r.rev.Color = color.White
 		} else {
-			r.fwd.Color = theme.Color(theme.ColorNameForegroundOnPrimary)
+			r.fwd.Color = color.White
 		}
 	}
 	r.Layout(r.s.Size())
