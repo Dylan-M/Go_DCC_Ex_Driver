@@ -68,6 +68,12 @@ and provenance, not firmware binaries. Normal unit tests remain independent.
 
 ## Simulation boundaries
 
+For manual desktop testing, `node integration/emulator/server.cjs --manual`
+extends the lifetime to two hours and permits a detached stdin. The first stdout
+JSON line reports the loopback TCP port to enter in the app. Stop that process
+when finished; the default CI mode still shuts down on stdin EOF and after
+120 seconds.
+
 This is a narrow Mega configuration: flash/SRAM, GPIO registers, timers 0/1/2,
 USART0, EEPROM, ADC and an empty I2C bus, with explicit Mega interrupt vectors
 and pin assignments. ADC inputs are zero and EEPROM starts erased. External

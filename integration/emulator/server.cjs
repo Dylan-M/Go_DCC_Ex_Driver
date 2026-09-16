@@ -4,6 +4,8 @@ const net = require('node:net');
 const path = require('node:path');
 const { createMega } = require('./mega.cjs');
 const firmware = process.env.DCCEX_FIRMWARE || path.join(__dirname, '.work/build/CommandStation-EX.ino.hex');
+// Interactive UI testing explicitly opts into a longer, still bounded session.
+const manual = process.argv.includes('--manual');
 let uartOutput = [], input = [], socket = null, ended = false, closed = false, settle = 0;
 let shuttingDown = false, pumpTimer;
 const log = (direction, text) => process.stderr.write(JSON.stringify({ direction, text }) + '\n');
@@ -81,7 +83,7 @@ function shutdown() {
   process.stdin.destroy();
 }
 // Hard bound even if the test process disappears or never connects.
-const lifetime = setTimeout(() => { log('error', '120 second lifetime exceeded'); process.exitCode = 1; shutdown(); }, 120_000);
+const lifetime = setTimeout(() => { log('error', 'Session lifetime exceeded'); process.exitCode = 1; shutdown(); }, manual ? 7_200_000 : 120_000);
 server.on('error', error => { log('error', error.message); process.exitCode = 1; shutdown(); });
 server.listen(0, '127.0.0.1', () => {
   report({ port: server.address().port });
@@ -102,6 +104,6 @@ process.stdin.on('data', text => {
     else { log('error', 'Unknown process control command'); process.exitCode = 1; shutdown(); }
   }
 });
-process.stdin.on('end', shutdown);
+process.stdin.on('end', () => { if (!manual) shutdown(); });
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
