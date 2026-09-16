@@ -17,7 +17,6 @@ import (
 	"image/color"
 	"strconv"
 	"strings"
-	"time"
 )
 
 var green = color.NRGBA{R: 46, G: 125, B: 50, A: 255}
@@ -41,29 +40,31 @@ func colored(b *widget.Button, c color.Color) fyne.CanvasObject {
 }
 
 type View struct {
-	Window                                        fyne.Window
-	session                                       *th.Session
-	rendering                                     bool
-	last                                          th.State
-	status, speedLabel, result, cv29Label         *widget.Label
-	mainPower, progPower, allOn, allOff           *widget.Button
-	current                                       *canvas.Text
-	currentBar                                    *widget.ProgressBar
-	speed                                         *widget.Slider
-	connect                                       *widget.Button
-	direction                                     *widget.RadioGroup
-	cab, host, port, baud, progAddress, progValue *widget.Entry
-	devices                                       *widget.SelectEntry
-	mode                                          *widget.Select
-	functions                                     [29]*FunctionButton
-	lamps                                         [29]*canvas.Rectangle
-	bits                                          [6]*widget.Check
-	console                                       *widget.List
-	logs                                          []th.LogEntry
-	stationStore                                  stations.Repository
-	savedStations                                 *widget.Select
-	saveStation, deleteStation                    *widget.Button
-	profiles                                      []stations.Profile
+	*throttlePanel
+	tabs      *container.AppTabs
+	runTabs   *container.DocTabs
+	panels    map[int]*throttlePanel
+	pomTarget *widget.Label
+
+	Window                                   fyne.Window
+	session                                  *th.Session
+	rendering                                bool
+	last                                     th.State
+	status, result, cv29Label                *widget.Label
+	mainPower, progPower, allOn, allOff      *widget.Button
+	current                                  *canvas.Text
+	currentBar                               *widget.ProgressBar
+	connect                                  *widget.Button
+	host, port, baud, progAddress, progValue *widget.Entry
+	devices                                  *widget.SelectEntry
+	mode                                     *widget.Select
+	bits                                     [6]*widget.Check
+	console                                  *widget.List
+	logs                                     []th.LogEntry
+	stationStore                             stations.Repository
+	savedStations                            *widget.Select
+	saveStation, deleteStation               *widget.Button
+	profiles                                 []stations.Profile
 }
 
 func entry(text string) *widget.Entry { e := widget.NewEntry(); e.SetText(text); return e }
@@ -75,7 +76,7 @@ type Options struct {
 }
 
 func New(window fyne.Window, s *th.Session, options ...Options) *View {
-	v := &View{Window: window, session: s}
+	v := &View{Window: window, session: s, panels: make(map[int]*throttlePanel)}
 	o := Options{Host: stations.DefaultHost, Port: stations.DefaultPort}
 	if len(options) > 0 {
 		o = options[0]
@@ -165,11 +166,50 @@ func New(window fyne.Window, s *th.Session, options ...Options) *View {
 	})
 	poll.SetChecked(true)
 	power := container.NewVBox(container.NewGridWithColumns(4, v.allOn, v.allOff, v.mainPower, v.progPower), container.NewBorder(nil, nil, v.current, poll, v.currentBar))
-	tabs := container.NewAppTabs(container.NewTabItem("Run", v.runTab()), container.NewTabItem("Programming", v.programTab()))
+	v.runTabs = container.NewDocTabs()
+	v.syncThrottles(th.State{Cab: 3, Throttles: []th.CabState{{Cab: 3, Direction: 1}}})
+	v.runTabs.OnSelected = func(tab *container.TabItem) {
+		if v.rendering {
+			return
+		}
+		for cab, panel := range v.panels {
+			if panel.tab == tab {
+				v.throttlePanel = panel
+				v.post(func(c *th.Controller) error { return c.FocusCab(cab) })
+				return
+			}
+		}
+	}
+	v.runTabs.CloseIntercept = func(tab *container.TabItem) {
+		for cab, panel := range v.panels {
+			if panel.tab == tab {
+				for _, b := range panel.functions {
+					b.up()
+				}
+				v.post(func(c *th.Controller) error { return c.RemoveCab(cab) })
+				return
+			}
+		}
+	}
+	add := widget.NewButtonWithIcon("Throttle", theme.ContentAddIcon(), v.addThrottleDialog)
+	v.runTabs.OnUnselected = func(tab *container.TabItem) {
+		for _, panel := range v.panels {
+			if panel.tab == tab {
+				for _, b := range panel.functions {
+					b.up()
+				}
+			}
+		}
+	}
+	run := container.NewBorder(container.NewHBox(add), nil, nil, nil, v.runTabs)
+	v.tabs = container.NewAppTabs(
+		container.NewTabItem("Connection", container.NewVScroll(connection)),
+		container.NewTabItem("Run", run),
+		container.NewTabItem("Programming", v.programTab()))
 	console := v.consoleView()
-	split := container.NewVSplit(tabs, console)
+	split := container.NewVSplit(v.tabs, console)
 	split.Offset = 0.72
-	window.SetContent(container.NewBorder(container.NewVBox(connection, widget.NewSeparator(), power), nil, nil, nil, split))
+	window.SetContent(container.NewBorder(power, nil, nil, nil, split))
 	window.Resize(fyne.NewSize(1050, 840))
 	return v
 }
@@ -186,64 +226,6 @@ func (v *View) integer(e *widget.Entry, label string) (int, bool) {
 		return 0, false
 	}
 	return n, true
-}
-func (v *View) runTab() fyne.CanvasObject {
-	v.cab = entry("3")
-	v.cab.OnSubmitted = func(text string) {
-		if n, ok := v.integer(v.cab, "Address"); ok {
-			v.post(func(c *th.Controller) error { return c.SelectCab(n) })
-		}
-	}
-	selectCab := widget.NewButton("Select", func() { v.cab.OnSubmitted(v.cab.Text) })
-	v.direction = widget.NewRadioGroup([]string{"Rev", "Fwd"}, nil)
-	v.direction.Horizontal = true
-	v.direction.Required = true
-	v.direction.SetSelected("Fwd")
-	v.direction.Disable()
-	v.direction.OnChanged = func(selected string) {
-		if v.rendering {
-			return
-		}
-		dir := 0
-		if selected == "Fwd" {
-			dir = 1
-		}
-		v.post(func(c *th.Controller) error { return c.SetDirection(dir, time.Now()) })
-	}
-	stop := widget.NewButton("STOP", func() { v.post(func(c *th.Controller) error { return c.Stop(time.Now()) }) })
-	estop := widget.NewButton("E-STOP ALL", func() { v.post(func(c *th.Controller) error { return c.Emergency() }) })
-	v.speedLabel = widget.NewLabel("Speed: 0")
-	v.speed = widget.NewSlider(0, 126)
-	v.speed.Step = 1
-	v.speed.OnChanged = func(value float64) {
-		if !v.rendering {
-			v.speedLabel.SetText(fmt.Sprintf("Speed: %d", int(value)))
-			v.post(func(c *th.Controller) error { return c.MoveSpeed(int(value)) })
-		}
-	}
-	controls := container.NewGridWithColumns(4, container.NewBorder(nil, nil, nil, selectCab, v.cab), v.direction, colored(stop, orange), colored(estop, red))
-	var funcs []fyne.CanvasObject
-	for n := 0; n < 29; n++ {
-		v.functions[n] = newFunctionButton(fmt.Sprintf("F%d", n), func() { v.post(func(c *th.Controller) error { return c.Function(n, true) }) }, func() { v.post(func(c *th.Controller) error { return c.Function(n, false) }) }, func() { v.showError(v.session.SetToggle(n, !v.last.Toggle[n])) })
-		lamp := canvas.NewRectangle(color.Transparent)
-		lamp.StrokeWidth = 3
-		v.lamps[n] = lamp
-		funcs = append(funcs, container.NewStack(lamp, container.NewPadded(v.functions[n])))
-	}
-	modes := widget.NewButton("Function modes…", func() {
-		var checks []fyne.CanvasObject
-		for n := 0; n < 29; n++ {
-			check := widget.NewCheck(fmt.Sprintf("F%d toggle", n), nil)
-			check.SetChecked(v.last.Toggle[n])
-			check.OnChanged = func(on bool) { v.showError(v.session.SetToggle(n, on)) }
-			checks = append(checks, check)
-		}
-		dialog.ShowCustom("Function modes", "Done", container.NewGridWithColumns(4, checks...), v.Window)
-	})
-	body := container.NewVBox(widget.NewLabel("Locomotive address"), controls, v.speedLabel, v.speed, widget.NewSeparator(),
-		widget.NewLabel("Functions — hold for momentary; right-click to change mode"), container.NewGridWithColumns(10, funcs...),
-		container.NewHBox(widget.NewButton("All Functions Off", func() { v.post(func(c *th.Controller) error { return c.AllFunctionsOff() }) }), modes))
-	return container.NewVScroll(body)
 }
 func (v *View) programTab() fyne.CanvasObject {
 	v.progAddress = entry("")
@@ -312,7 +294,8 @@ func (v *View) programTab() fyne.CanvasObject {
 			v.post(func(c *th.Controller) error { return c.POM(n, value) })
 		}
 	})
-	pom := container.NewVBox(widget.NewLabel("Program on Main — selected Run locomotive; no acknowledgement"),
+	v.pomTarget = widget.NewLabel("Program on Main — locomotive 3; no acknowledgement")
+	pom := container.NewVBox(v.pomTarget,
 		container.NewGridWithColumns(2, widget.NewForm(widget.NewFormItem("CV", pomCV)), widget.NewForm(widget.NewFormItem("Value", pomValue))), pomName, pomWrite)
 	return container.NewVScroll(container.NewVBox(service, widget.NewSeparator(), editor, widget.NewSeparator(), pom))
 }
@@ -350,37 +333,12 @@ func (v *View) Render(s th.State) {
 	defer func() { v.rendering = false }()
 	v.status.SetText(s.Status)
 	v.renderPowerControls(s)
-	v.speed.SetValue(float64(s.Speed))
-	v.speedLabel.SetText(fmt.Sprintf("Speed: %d", s.Speed))
+	v.syncThrottles(s)
+	v.pomTarget.SetText(fmt.Sprintf("Program on Main — locomotive %d; no acknowledgement", s.Cab))
 	if s.Connected {
 		v.connect.SetText("Disconnect")
 	} else {
 		v.connect.SetText("Connect")
-	}
-	if s.Cab != v.last.Cab {
-		v.cab.SetText(fmt.Sprint(s.Cab))
-	}
-	if s.Direction == 1 {
-		v.direction.SetSelected("Fwd")
-	} else {
-		v.direction.SetSelected("Rev")
-	}
-	if s.Connected {
-		v.direction.Enable()
-	} else {
-		v.direction.Disable()
-	}
-	for n, b := range v.functions {
-		label := fmt.Sprintf("F%d", n)
-		if s.Toggle[n] {
-			label += " ↕"
-		}
-		b.SetText(label)
-		v.lamps[n].StrokeColor = color.Transparent
-		if s.Functions[n] {
-			v.lamps[n].StrokeColor = green
-		}
-		v.lamps[n].Refresh()
 	}
 	limit := s.TripMA
 	if limit == 0 {

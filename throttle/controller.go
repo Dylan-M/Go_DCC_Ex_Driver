@@ -16,6 +16,7 @@ type Sender interface {
 }
 type LogEntry struct{ Kind, Text string }
 type State struct {
+	Throttles                                   []CabState
 	Connected                                   bool
 	Status                                      string
 	Cab, Speed, Direction                       int
@@ -32,6 +33,7 @@ type State struct {
 	Logs                                        []LogEntry
 }
 type Controller struct {
+	cabs                     map[int]cabRuntime
 	state                    State
 	sender                   Sender
 	pending                  *int
@@ -43,11 +45,12 @@ type Controller struct {
 }
 
 func New(toggle [29]bool) *Controller {
-	return &Controller{state: State{Status: "Disconnected", Cab: 3, Direction: 1, Power: "power: unknown", Poll: true, ProgramResult: "result: --", Toggle: toggle}}
+	return &Controller{cabs: map[int]cabRuntime{3: {state: CabState{Cab: 3, Direction: 1}}}, state: State{Status: "Disconnected", Cab: 3, Direction: 1, Power: "power: unknown", Poll: true, ProgramResult: "result: --", Toggle: toggle}}
 }
 func (c *Controller) Snapshot() State {
 	s := c.state
 	s.Logs = append([]LogEntry(nil), s.Logs...)
+	s.Throttles = c.cabStates()
 	return s
 }
 func (c *Controller) Log(kind, text string) {
@@ -74,8 +77,13 @@ func (c *Controller) Attach(s Sender, description string) error {
 	if err := c.send(p.EncodeStatus(), false); err != nil {
 		return err
 	}
-	cmd, _ := p.EncodeLocoRequest(c.state.Cab)
-	return c.send(cmd, false)
+	for _, cab := range c.cabStates() {
+		cmd, _ := p.EncodeLocoRequest(cab.Cab)
+		if err := c.send(cmd, false); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 func (c *Controller) Detach(reason string) {
 	if c.sender != nil {
@@ -87,6 +95,11 @@ func (c *Controller) Detach(reason string) {
 	c.pending = nil
 	c.lastKnown = false
 	c.state.Power = "power: unknown"
+	for cab, state := range c.cabs {
+		state.pending = nil
+		state.lastKnown = false
+		c.cabs[cab] = state
+	}
 	c.state.MainPower, c.state.ProgPower = "", ""
 	c.trackModes = [8]string{}
 	c.trackPowers = [8]p.PowerState{}
@@ -132,6 +145,10 @@ func (c *Controller) command(cmd string, err error) error {
 	return c.send(cmd, false)
 }
 func (c *Controller) SelectCab(cab int) error {
+	return c.selectCab(cab, false)
+}
+
+func (c *Controller) selectCab(cab int, preservePending bool) error {
 	cmd, err := p.EncodeLocoRequest(cab)
 	if err != nil {
 		return err
@@ -139,12 +156,14 @@ func (c *Controller) SelectCab(cab int) error {
 	if cab == c.state.Cab {
 		return nil
 	}
-	c.state.Cab = cab
-	c.state.Speed = 0
-	c.state.Direction = 1
-	c.state.Functions = [29]bool{}
-	c.pending = nil
-	c.lastKnown = false
+	if !preservePending {
+		c.pending = nil
+	}
+	c.storeCab()
+	if _, ok := c.cabs[cab]; !ok {
+		c.cabs[cab] = cabRuntime{state: CabState{Cab: cab, Direction: 1}}
+	}
+	c.loadCab(cab)
 	c.Log("info", fmt.Sprintf("loco %d selected", cab))
 	if c.sender != nil {
 		return c.send(cmd, false)
@@ -181,7 +200,7 @@ func (c *Controller) transmit(speed, dir int, now time.Time) error {
 	c.lastSent = now
 	return nil
 }
-func (c *Controller) Tick(now time.Time) error {
+func (c *Controller) tickCurrent(now time.Time) error {
 	if c.pending == nil || c.sender == nil {
 		return nil
 	}
@@ -225,10 +244,22 @@ func (c *Controller) Stop(now time.Time) error {
 }
 func (c *Controller) Emergency() error {
 	c.pending = nil
+	// Never replay another throttle's queued movement after a stop attempt,
+	// even if the emergency command itself fails to reach the station.
+	for cab, state := range c.cabs {
+		state.pending = nil
+		c.cabs[cab] = state
+	}
 	if err := c.send(p.EncodeEmergencyStop(), false); err != nil {
 		return err
 	}
 	c.state.Speed = 0
+	for cab, state := range c.cabs {
+		state.state.Speed = 0
+		state.pending = nil
+		state.lastSpeed = 0
+		c.cabs[cab] = state
+	}
 	c.lastSpeed = 0
 	c.lastDirection = c.state.Direction
 	c.lastKnown = true
@@ -339,17 +370,12 @@ func (c *Controller) Receive(e p.Event) {
 	switch v := e.(type) {
 	case p.LocoState:
 		if v.Cab != c.state.Cab {
+			if _, ok := c.cabs[v.Cab]; ok {
+				c.WithCab(v.Cab, func(c *Controller) error { c.receiveLoco(v); return nil })
+			}
 			return
 		}
-		c.state.Speed = v.Speed
-		c.state.Direction = v.Direction
-		c.pending = nil
-		c.lastSpeed = v.Speed
-		c.lastDirection = v.Direction
-		c.lastKnown = true
-		for n := range c.state.Functions {
-			c.state.Functions[n] = v.FunctionMask&(1<<n) != 0
-		}
+		c.receiveLoco(v)
 	case p.TrackPower:
 		c.state.Power = fmt.Sprintf("power: %s %s", v.Track, v.State)
 		c.receivePower(v)

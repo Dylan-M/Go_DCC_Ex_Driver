@@ -371,3 +371,26 @@ func TestFirmwareIndependentPowerIndicators(t *testing.T) {
 		awaitState(t, s, func(v throttle.State) bool { return v.MainPower == step.main && v.ProgPower == step.prog })
 	}
 }
+
+func TestFirmwareMultipleThrottles(t *testing.T) {
+	f := startFirmware(t)
+	s := session(t, f)
+	post(t, s, func(c *throttle.Controller) error { return c.AddCab(7) })
+	awaitState(t, s, func(v throttle.State) bool { return len(v.Throttles) == 2 && hasRX(v, "<l 7 -1 128 0>") })
+	post(t, s, func(c *throttle.Controller) error {
+		return c.WithCab(3, func(c *throttle.Controller) error { return c.MoveSpeed(25) })
+	})
+	post(t, s, func(c *throttle.Controller) error {
+		return c.WithCab(7, func(c *throttle.Controller) error { return c.MoveSpeed(40) })
+	})
+	awaitState(t, s, func(v throttle.State) bool { return hasRX(v, "<l 3 0 154 0>") && hasRX(v, "<l 7 0 169 0>") })
+	post(t, s, func(c *throttle.Controller) error { return c.FocusCab(3) })
+	post(t, s, func(c *throttle.Controller) error {
+		return c.WithCab(7, func(c *throttle.Controller) error { return c.SetDirection(0, time.Now()) })
+	})
+	awaitState(t, s, func(v throttle.State) bool {
+		return v.Cab == 3 && v.Speed == 25 && v.Direction == 1 && v.Throttles[1].Direction == 0 && hasRX(v, "<l 7 0 41 0>")
+	})
+	post(t, s, func(c *throttle.Controller) error { return c.Emergency() })
+	awaitState(t, s, func(v throttle.State) bool { return v.Throttles[0].Speed == 0 && v.Throttles[1].Speed == 0 })
+}

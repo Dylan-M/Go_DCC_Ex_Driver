@@ -111,10 +111,10 @@ func TestPowerButtonsFollowStationReplies(t *testing.T) {
 		t.Fatal("ON/OFF styling")
 	}
 	// The two-position selector names a destination instead of toggling blindly.
-	if !v.direction.Horizontal || !v.direction.Required || v.direction.Selected != "Fwd" {
+	if v.direction.Selected != "Fwd" {
 		t.Fatal("direction selector must show one current direction")
 	}
-	options := test.WidgetRenderer(v.direction).Objects()
+	v.direction.Resize(fyne.NewSize(200, 36))
 	waitDirection := func(want int) {
 		t.Helper()
 		deadline := time.NewTimer(5 * time.Second)
@@ -151,18 +151,18 @@ func TestPowerButtonsFollowStationReplies(t *testing.T) {
 		default:
 		}
 	}
-	test.Tap(options[0].(fyne.Tappable)) // Rev
+	test.TapAt(v.direction, fyne.NewPos(25, 18)) // Rev
 	expectCommand("<t 3 0 0>")
 	waitDirection(0)
 	if v.direction.Selected != "Rev" {
 		t.Fatal("reverse not selected")
 	}
-	test.Tap(options[0].(fyne.Tappable)) // Already selected: no toggle or deselection.
+	test.TapAt(v.direction, fyne.NewPos(25, 18)) // Already selected: no toggle or deselection.
 	assertNoCommand()
 	if v.direction.Selected != "Rev" {
 		t.Fatal("selected direction was cleared")
 	}
-	test.Tap(options[1].(fyne.Tappable)) // Fwd
+	test.TapAt(v.direction, fyne.NewPos(175, 18)) // Fwd
 	expectCommand("<t 3 0 1>")
 	waitDirection(1)
 	reply("<l 3 0 0 0>") // Another throttle selects reverse.

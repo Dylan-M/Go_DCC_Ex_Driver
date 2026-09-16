@@ -19,6 +19,19 @@ See [saved stations and platform scope](stations/README.md) and
 
 ## What it does
 
+### Tabbed controls
+
+The main tabs are **Connection**, **Run**, and **Programming**. Run contains
+independent locomotive tabs: use **+ Throttle** to add an address, and a tab's
+close control to remove it. Stop a locomotive before closing or reassigning its
+throttle; at least one throttle stays open. Open throttle tabs are session-only.
+
+Each throttle maintains its own speed, direction, and function state. Switching
+tabs does not cancel another throttle's queued speed command. Direction uses a
+full-width sliding Rev/Fwd selector: tap either side or drag and release.
+Track power, emergency stop, and momentary/toggle function preferences are shared.
+Program on Main explicitly shows the selected Run locomotive as its target.
+
 This port reimplements the Python-based DCC-EX throttle client in Go using Fyne as the UI toolkit. It speaks the **DCC-EX native command protocol** directly to an EX-CommandStation over TCP or USB serial — no phone apps, no JMRI, no WiThrottle bridge, no subscriptions.
 
 ### Protocol capabilities (this slice)
@@ -75,7 +88,7 @@ go vet -tags ci ./...
 
 - Inbound station updates never echo back as new outbound throttle commands
 - Speed values manipulated while disconnected are not transmitted after reconnection
-- Queued speed updates are discarded when their intent becomes obsolete (cab change, explicit stop, e-stop, inbound authoritative state, disconnect)
+- Queued speed updates are discarded when their intent becomes obsolete (locomotive reassignment, explicit stop, e-stop, inbound authoritative state, disconnect), not when navigating between open throttle tabs
 - Displayed speed/direction/latched functions don't claim success when writes fail
 - Direction/stop controls restore prior displayed state on send failure
 - TCP EOF vs serial timeout handled distinctly; serial timeout is not a disconnect
