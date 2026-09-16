@@ -221,7 +221,7 @@ func TestProgrammingAndCV29(t *testing.T) {
 	c.WriteAddress(300)
 	c.ReadCV(3)
 	c.WriteCV(3, 20)
-	c.POM(3, 10)
+	c.POM(3, 3, 10)
 	want := []string{"<R>", "<W 300>", "<R 3>", "<W 3 20>", "<w 3 3 10>"}
 	if !reflect.DeepEqual(s.commands, want) {
 		t.Fatal(s.commands)

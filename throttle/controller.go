@@ -344,8 +344,8 @@ func (c *Controller) WriteCV(cv, value int) error {
 	c.state.ProgramResult = "writing " + CVDescription(cv) + "..."
 	return nil
 }
-func (c *Controller) POM(cv, value int) error {
-	return c.command(p.EncodeProgramOnMain(c.state.Cab, cv, value))
+func (c *Controller) POM(cab, cv, value int) error {
+	return c.command(p.EncodeProgramOnMain(cab, cv, value))
 }
 func (c *Controller) EditCV29(low byte) { c.state.CV29 = c.state.CV29&0xc0 | low&0x3f }
 func (c *Controller) WriteCV29() error  { return c.WriteCV(29, int(c.state.CV29)) }

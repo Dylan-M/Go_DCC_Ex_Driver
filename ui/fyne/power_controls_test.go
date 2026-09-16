@@ -182,10 +182,14 @@ func TestPowerButtonsFollowStationReplies(t *testing.T) {
 	}
 	v.tabs.SelectIndex(2)
 	v.programmingTabs.SelectIndex(1)
+	if v.pomAddress.Text != "" {
+		t.Fatal("POM must require an explicit address, not inherit Run")
+	}
+	v.pomAddress.SetText("42") // No Run throttle exists for this locomotive.
 	v.pomCV.SetText("29")
 	v.pomValue.SetText("6")
 	test.Tap(v.pomWrite)
-	expectCommand("<w 3 29 6>")
+	expectCommand("<w 42 29 6>")
 	assertNoCommand()
 	// A queued change in focus must not retarget the address displayed when
 	// Write on Main was clicked.
@@ -193,9 +197,20 @@ func TestPowerButtonsFollowStationReplies(t *testing.T) {
 		t.Fatal(err)
 	}
 	expectCommand("<t 7>")
-	// The UI has not rendered that update yet: its displayed target is still 3.
+	// Even a rendered Run selection change must leave the POM address alone.
+	waitDirection(1) // Newly opened cab 7 is forward; cab 3 was reverse.
+	if v.last.Cab != 7 || v.pomAddress.Text != "42" {
+		t.Fatal("Run selection changed the independent POM address")
+	}
 	test.Tap(v.pomWrite)
-	expectCommand("<w 3 29 6>")
+	expectCommand("<w 42 29 6>")
+	assertNoCommand()
+	v.pomAddress.SetText("84")
+	test.Tap(v.pomWrite)
+	expectCommand("<w 84 29 6>")
+	if v.last.Cab != 7 || len(v.panels) != 2 {
+		t.Fatal("POM must not select or create a Run throttle")
+	}
 	assertNoCommand()
 	peer.Close()
 	waitState("Main (Unknown)", "Prog (Unknown)")

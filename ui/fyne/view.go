@@ -41,13 +41,12 @@ func colored(b *widget.Button, c color.Color) fyne.CanvasObject {
 
 type View struct {
 	*throttlePanel
-	tabs            *container.AppTabs
-	runTabs         *container.DocTabs
-	panels          map[int]*throttlePanel
-	pomTarget       *widget.Label
-	programmingTabs *container.AppTabs
-	pomCV, pomValue *widget.Entry
-	pomWrite        *widget.Button
+	tabs                        *container.AppTabs
+	runTabs                     *container.DocTabs
+	panels                      map[int]*throttlePanel
+	programmingTabs             *container.AppTabs
+	pomAddress, pomCV, pomValue *widget.Entry
+	pomWrite                    *widget.Button
 
 	Window                                   fyne.Window
 	session                                  *th.Session
@@ -241,6 +240,8 @@ func (v *View) programTab() fyne.CanvasObject {
 	cv := entry("")
 	pomCV := entry("")
 	pomValue := entry("")
+	v.pomAddress = entry("")
+	v.pomAddress.SetPlaceHolder("1–10293")
 	v.pomCV, v.pomValue = pomCV, pomValue
 	cvName, pomName := widget.NewLabel(""), widget.NewLabel("")
 	cv.OnChanged = func(s string) { n, _ := strconv.Atoi(s); cvName.SetText(th.CVName(n)) }
@@ -294,26 +295,29 @@ func (v *View) programTab() fyne.CanvasObject {
 		widget.NewButton("Write CV29", func() { v.post(func(c *th.Controller) error { return c.WriteCV29() }) })),
 		widget.NewLabel("Bit 5 selects the address type. Use Write Address to change an address."))
 	pomWrite := widget.NewButton("Write on Main", func() {
+		cab, ok := v.integer(v.pomAddress, "Locomotive address")
+		if !ok {
+			return
+		}
 		n, ok := v.integer(pomCV, "CV")
 		if !ok {
 			return
 		}
 		value, ok := v.integer(pomValue, "Value")
 		if ok {
-			// Capture the displayed target, not whichever throttle happens to
-			// have focus when this queued command is processed.
-			cab := v.last.Cab
+			// The POM address is independent of all Run throttles and is
+			// captured with the CV/value at the time of the click.
 			v.post(func(c *th.Controller) error {
-				return c.WithCab(cab, func(c *th.Controller) error { return c.POM(n, value) })
+				return c.POM(cab, n, value)
 			})
 		}
 	})
 	v.pomWrite = pomWrite
-	v.pomTarget = widget.NewLabel("Program on Main — locomotive 3; no acknowledgement")
-	pomHelp := widget.NewLabel("Select the target locomotive in Run. This mode writes CVs without readback or acknowledgement.")
+	pomHelp := widget.NewLabel("Enter the target locomotive address here, independently of Run. This mode writes CVs without readback or acknowledgement.")
 	pomHelp.Wrapping = fyne.TextWrapWord
-	pom := container.NewVBox(v.pomTarget,
+	pom := container.NewVBox(widget.NewLabel("Program on Main"),
 		pomHelp,
+		widget.NewForm(widget.NewFormItem("Locomotive address", v.pomAddress)),
 		container.NewGridWithColumns(2, widget.NewForm(widget.NewFormItem("CV", pomCV)), widget.NewForm(widget.NewFormItem("Value", pomValue))), pomName, pomWrite)
 	v.programmingTabs = container.NewAppTabs(
 		container.NewTabItem("Programming Track", container.NewVScroll(container.NewVBox(service, widget.NewSeparator(), editor))),
@@ -355,7 +359,6 @@ func (v *View) Render(s th.State) {
 	v.status.SetText(s.Status)
 	v.renderPowerControls(s)
 	v.syncThrottles(s)
-	v.pomTarget.SetText(fmt.Sprintf("Program on Main — locomotive %d; no acknowledgement", s.Cab))
 	if s.Connected {
 		v.connect.SetText("Disconnect")
 	} else {
