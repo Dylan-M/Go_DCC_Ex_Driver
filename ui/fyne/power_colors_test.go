@@ -44,7 +44,11 @@ func TestPowerButtonPalette(t *testing.T) {
 				if wrapper.Theme.Color(theme.ColorNamePrimary, variant) != want[i] {
 					t.Fatalf("wrong color for button %d", i)
 				}
-				if wrapper.Theme.Color(theme.ColorNameForegroundOnPrimary, variant) != color.White {
+				var foreground color.Color = color.White
+				if want[i] == powerOrange {
+					foreground = color.NRGBA{R: 24, G: 24, B: 24, A: 255}
+				}
+				if wrapper.Theme.Color(theme.ColorNameForegroundOnPrimary, variant) != foreground {
 					t.Fatal("text must remain readable in both themes")
 				}
 			}

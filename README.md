@@ -42,7 +42,11 @@ full-width sliding Rev/Fwd selector: tap either side or drag and release. The
 thumb stays purple in both directions, with white selected text; disconnected
 controls use neutral disabled styling.
 Track power, emergency stop, and momentary/toggle function preferences are shared.
-Program on Main explicitly shows the selected Run locomotive as its target.
+Programming has **Programming Track** and **On Main** sub-tabs. On Main
+explicitly shows the selected Run locomotive as its target and provides CV/value
+fields and Write on Main. It uses addressed CV writes without readback or decoder
+acknowledgement; the service-mode address tools and CV29 editor remain under
+Programming Track. A queued main-track write retains the target shown when clicked.
 
 This port reimplements the Python-based DCC-EX throttle client in Go using Fyne as the UI toolkit. It speaks the **DCC-EX native command protocol** directly to an EX-CommandStation over TCP or USB serial — no phone apps, no JMRI, no WiThrottle bridge, no subscriptions.
 

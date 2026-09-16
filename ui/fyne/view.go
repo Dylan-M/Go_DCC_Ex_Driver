@@ -41,10 +41,13 @@ func colored(b *widget.Button, c color.Color) fyne.CanvasObject {
 
 type View struct {
 	*throttlePanel
-	tabs      *container.AppTabs
-	runTabs   *container.DocTabs
-	panels    map[int]*throttlePanel
-	pomTarget *widget.Label
+	tabs            *container.AppTabs
+	runTabs         *container.DocTabs
+	panels          map[int]*throttlePanel
+	pomTarget       *widget.Label
+	programmingTabs *container.AppTabs
+	pomCV, pomValue *widget.Entry
+	pomWrite        *widget.Button
 
 	Window                                   fyne.Window
 	session                                  *th.Session
@@ -238,6 +241,7 @@ func (v *View) programTab() fyne.CanvasObject {
 	cv := entry("")
 	pomCV := entry("")
 	pomValue := entry("")
+	v.pomCV, v.pomValue = pomCV, pomValue
 	cvName, pomName := widget.NewLabel(""), widget.NewLabel("")
 	cv.OnChanged = func(s string) { n, _ := strconv.Atoi(s); cvName.SetText(th.CVName(n)) }
 	pomCV.OnChanged = func(s string) { n, _ := strconv.Atoi(s); pomName.SetText(th.CVName(n)) }
@@ -296,13 +300,25 @@ func (v *View) programTab() fyne.CanvasObject {
 		}
 		value, ok := v.integer(pomValue, "Value")
 		if ok {
-			v.post(func(c *th.Controller) error { return c.POM(n, value) })
+			// Capture the displayed target, not whichever throttle happens to
+			// have focus when this queued command is processed.
+			cab := v.last.Cab
+			v.post(func(c *th.Controller) error {
+				return c.WithCab(cab, func(c *th.Controller) error { return c.POM(n, value) })
+			})
 		}
 	})
+	v.pomWrite = pomWrite
 	v.pomTarget = widget.NewLabel("Program on Main — locomotive 3; no acknowledgement")
+	pomHelp := widget.NewLabel("Select the target locomotive in Run. This mode writes CVs without readback or acknowledgement.")
+	pomHelp.Wrapping = fyne.TextWrapWord
 	pom := container.NewVBox(v.pomTarget,
+		pomHelp,
 		container.NewGridWithColumns(2, widget.NewForm(widget.NewFormItem("CV", pomCV)), widget.NewForm(widget.NewFormItem("Value", pomValue))), pomName, pomWrite)
-	return container.NewVScroll(container.NewVBox(service, widget.NewSeparator(), editor, widget.NewSeparator(), pom))
+	v.programmingTabs = container.NewAppTabs(
+		container.NewTabItem("Programming Track", container.NewVScroll(container.NewVBox(service, widget.NewSeparator(), editor))),
+		container.NewTabItem("On Main", container.NewVScroll(pom)))
+	return v.programmingTabs
 }
 func (v *View) consoleView() fyne.CanvasObject {
 	v.console = widget.NewList(func() int { return len(v.logs) }, func() fyne.CanvasObject {

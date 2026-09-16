@@ -175,6 +175,28 @@ func TestPowerButtonsFollowStationReplies(t *testing.T) {
 		t.Fatal("external direction change not displayed")
 	}
 	assertNoCommand() // Rendering a station update must not echo a command.
+	// Program on Main must be discoverable and send an addressed main-track
+	// CV write, not the service-mode command for the programming track.
+	if len(v.programmingTabs.Items) != 2 || v.programmingTabs.Items[1].Text != "On Main" {
+		t.Fatal("missing On Main programming tab")
+	}
+	v.tabs.SelectIndex(2)
+	v.programmingTabs.SelectIndex(1)
+	v.pomCV.SetText("29")
+	v.pomValue.SetText("6")
+	test.Tap(v.pomWrite)
+	expectCommand("<w 3 29 6>")
+	assertNoCommand()
+	// A queued change in focus must not retarget the address displayed when
+	// Write on Main was clicked.
+	if err := s.Post(func(c *th.Controller) error { return c.AddCab(7) }); err != nil {
+		t.Fatal(err)
+	}
+	expectCommand("<t 7>")
+	// The UI has not rendered that update yet: its displayed target is still 3.
+	test.Tap(v.pomWrite)
+	expectCommand("<w 3 29 6>")
+	assertNoCommand()
 	peer.Close()
 	waitState("Main (Unknown)", "Prog (Unknown)")
 	if !v.mainPower.Disabled() || !v.progPower.Disabled() || !v.allOn.Disabled() || !v.allOff.Disabled() {

@@ -12,12 +12,12 @@ import (
 
 var (
 	powerBlue   = color.NRGBA{R: 21, G: 101, B: 192, A: 255}
-	powerOrange = color.NRGBA{R: 166, G: 75, B: 0, A: 255}
+	powerOrange = color.NRGBA{R: 255, G: 152, B: 0, A: 255}
 	powerSlate  = color.NRGBA{R: 70, G: 82, B: 94, A: 255}
 	powerTaupe  = color.NRGBA{R: 109, G: 94, B: 80, A: 255}
 )
 
-// Keep readable white text on the fixed, dark button colors in either theme.
+// Use dark text on vivid orange and white text on the darker button colors.
 type powerTheme struct {
 	fyne.Theme
 	accent color.Color
@@ -28,6 +28,9 @@ func (t powerTheme) Color(n fyne.ThemeColorName, variant fyne.ThemeVariant) colo
 	case theme.ColorNamePrimary:
 		return t.accent
 	case theme.ColorNameForegroundOnPrimary:
+		if t.accent == powerOrange {
+			return color.NRGBA{R: 24, G: 24, B: 24, A: 255}
+		}
 		return color.White
 	default:
 		return t.Theme.Color(n, variant)
