@@ -52,6 +52,7 @@ type View struct {
 	last                                     th.State
 	status, result, cv29Label                *widget.Label
 	mainPower, progPower, allOn, allOff      *widget.Button
+	mainPowerTheme, progPowerTheme           *container.ThemeOverride
 	current                                  *canvas.Text
 	currentBar                               *widget.ProgressBar
 	connect                                  *widget.Button
@@ -93,6 +94,8 @@ func New(window fyne.Window, s *th.Session, options ...Options) *View {
 	v.progPower = widget.NewButton("Prog (Unknown)", func() { v.post(func(c *th.Controller) error { return c.TogglePower(p.Prog) }) })
 	v.allOn = widget.NewButton("All On", func() { v.post(func(c *th.Controller) error { return c.Power(true, p.All) }) })
 	v.allOff = widget.NewButton("All Off", func() { v.post(func(c *th.Controller) error { return c.Power(false, p.All) }) })
+	v.mainPowerTheme = container.NewThemeOverride(v.mainPower, powerTheme{theme.DefaultTheme(), green})
+	v.progPowerTheme = container.NewThemeOverride(v.progPower, powerTheme{theme.DefaultTheme(), powerBlue})
 	v.renderPowerControls(th.State{})
 	v.result = widget.NewLabel("result: --")
 	v.result.Wrapping = fyne.TextWrapWord
@@ -165,7 +168,7 @@ func New(window fyne.Window, s *th.Session, options ...Options) *View {
 		}
 	})
 	poll.SetChecked(true)
-	power := container.NewVBox(container.NewGridWithColumns(4, v.allOn, v.allOff, v.mainPower, v.progPower), container.NewBorder(nil, nil, v.current, poll, v.currentBar))
+	power := container.NewVBox(container.NewGridWithColumns(4, powerAction(v.allOn, powerSlate), powerAction(v.allOff, powerTaupe), v.mainPowerTheme, v.progPowerTheme), container.NewBorder(nil, nil, v.current, poll, v.currentBar))
 	connection.Add(widget.NewSeparator())
 	connection.Add(power)
 	v.runTabs = container.NewDocTabs()

@@ -41,6 +41,8 @@ func TestTabbedThrottles(t *testing.T) {
 			}
 		case *container.Scroll:
 			return contains(obj.Content, target)
+		case *container.ThemeOverride:
+			return contains(obj.Content, target)
 		}
 		return false
 	}

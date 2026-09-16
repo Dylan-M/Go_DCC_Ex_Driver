@@ -27,6 +27,12 @@ use **+ Throttle** to add an address, and a tab's
 close control to remove it. Stop a locomotive before closing or reassigning its
 throttle; at least one throttle stays open. Open throttle tabs are session-only.
 
+Power colors reflect confirmed station state: Main is green On/red Off, and
+Prog is blue On/orange Off. All On uses fixed slate and All Off fixed taupe;
+these are action buttons, not state indicators. Parenthesized labels remain,
+with neutral styling for unknown, mixed or overload states and disabled controls
+when disconnected.
+
 Each throttle maintains its own speed, direction, and function state. Switching
 tabs does not cancel another throttle's queued speed command. Direction uses a
 full-width sliding Rev/Fwd selector: tap either side or drag and release.

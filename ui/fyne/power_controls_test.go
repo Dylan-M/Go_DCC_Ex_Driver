@@ -97,17 +97,21 @@ func TestPowerButtonsFollowStationReplies(t *testing.T) {
 		{v.allOff, "<0>", "<p0>", "Main (Off)", "Prog (Off)"},
 	} {
 		beforeMain, beforeProg := v.mainPower.Text, v.progPower.Text
+		beforeMainColor, beforeProgColor := v.mainPowerTheme.Theme, v.progPowerTheme.Theme
 		test.Tap(step.button)
 		expectCommand(step.command)
 		if v.mainPower.Text != beforeMain || v.progPower.Text != beforeProg {
 			t.Fatal("optimistic power display before station reply")
+		}
+		if v.mainPowerTheme.Theme != beforeMainColor || v.progPowerTheme.Theme != beforeProgColor {
+			t.Fatal("optimistic power colors before station reply")
 		}
 		reply(step.ack)
 		waitState(step.main, step.prog)
 	}
 	reply("<p1 MAIN>") // Also reflect another throttle's changes.
 	waitState("Main (On)", "Prog (Off)")
-	if v.mainPower.Importance != widget.HighImportance || v.progPower.Importance == widget.HighImportance {
+	if v.mainPower.Importance != widget.HighImportance || v.progPower.Importance != widget.HighImportance {
 		t.Fatal("ON/OFF styling")
 	}
 	// The two-position selector names a destination instead of toggling blindly.
