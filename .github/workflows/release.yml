@@ -1,0 +1,179 @@
+name: Desktop releases
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
+      - 'internal/release/**'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version for a build-only rehearsal (never publishes a release)'
+        default: 'v0.0.0-ci.1'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - name: Validate release tag
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.version || 'v0.0.0-ci.1' }}
+        run: |
+          set -euo pipefail
+          go run ./internal/release validate "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+      - name: Unit and headless UI tests
+        run: go test -race -tags ci -timeout=3m ./...
+      - name: Static checks
+        run: go vet -tags ci ./...
+
+  build:
+    needs: validate
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {runner: windows-2022, target: windows-amd64, goos: windows, goarch: amd64, llvm: x86_64, sha: 1bcf74d06b724aeecaa6412ca85f5b26fb1da770e7cdcefa9263c9c5c3ad34b6}
+          - {runner: windows-11-arm, target: windows-arm64, goos: windows, goarch: arm64, llvm: aarch64, sha: 7fe35f60407473c420ac72b25137f54385b0affd2c42efd507c0062fc626ab56}
+          - {runner: macos-15-intel, target: macos-amd64, goos: darwin, goarch: amd64}
+          - {runner: macos-15, target: macos-arm64, goos: darwin, goarch: arm64}
+          - {runner: ubuntu-24.04, target: linux-amd64, goos: linux, goarch: amd64}
+          - {runner: ubuntu-24.04-arm, target: linux-arm64, goos: linux, goarch: arm64}
+    defaults:
+      run:
+        shell: bash
+    env:
+      CGO_ENABLED: '1'
+      GOOS: ${{ matrix.goos }}
+      GOARCH: ${{ matrix.goarch }}
+      RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+      RELEASE_TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          architecture: ${{ matrix.goarch }}
+      - name: Install Linux graphics development dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc pkg-config libgl1-mesa-dev xorg-dev
+      - name: Install verified native Windows compiler
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          LLVM_HOST: ${{ matrix.llvm }}
+          LLVM_SHA256: ${{ matrix.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $name = "llvm-mingw-20260908-ucrt-$env:LLVM_HOST"
+          $archive = Join-Path $env:RUNNER_TEMP "$name.zip"
+          Invoke-WebRequest "https://github.com/mstorsjo/llvm-mingw/releases/download/20260908/$name.zip" -OutFile $archive
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $env:LLVM_SHA256) {
+            throw 'LLVM-MinGW checksum mismatch'
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath $env:RUNNER_TEMP
+          $bin = Join-Path $env:RUNNER_TEMP "$name/bin"
+          $bin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "CC=$bin/$env:LLVM_HOST-w64-mingw32-clang.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "CXX=$bin/$env:LLVM_HOST-w64-mingw32-clang++.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Test on target architecture
+        run: go test -tags ci -timeout=3m ./...
+      - name: Build native release executable
+        run: |
+          set -euo pipefail
+          mkdir -p staging
+          binary=staging/dccex-driver
+          flags='-s -w'
+          if [[ "$GOOS" == windows ]]; then
+            binary+=.exe
+            flags+=' -H=windowsgui -extldflags=-static'
+          fi
+          go build -trimpath -tags release -ldflags "$flags" -o "$binary" ./cmd/dccex-driver
+          "$binary" --help
+          if [[ "$GOOS" == darwin ]]; then
+            codesign --force --sign - "$binary"
+            codesign --verify "$binary"
+          fi
+          go run ./internal/release package "$RELEASE_TAG" "$RELEASE_TARGET" "$binary" dist
+      - name: Retain release package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [validate, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+      - name: Verify complete asset set and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          go run ./internal/release checksums "$RELEASE_TAG" dist
+          (cd dist && sha256sum --check SHA256SUMS)
+          # Start as a draft so a partial upload is never publicly presented as complete.
+          # Reruns may finish an existing draft, but cannot overwrite published assets.
+          if gh release view "$RELEASE_TAG" --json isDraft > release-state.json 2>/dev/null; then
+            test "$(jq -r .isDraft release-state.json)" = true
+          else
+            options=()
+            if [[ "$PRERELEASE" == true ]]; then options+=(--prerelease); fi
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_TAG" \
+              --generate-notes "${options[@]}"
+          fi
+          gh release upload "$RELEASE_TAG" dist/* --clobber
+          if [[ "$PRERELEASE" == true ]]; then
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false
+          else
+            gh release edit "$RELEASE_TAG" --draft=false
+          fi
