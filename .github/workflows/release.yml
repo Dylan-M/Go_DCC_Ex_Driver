@@ -85,7 +85,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc pkg-config libgl1-mesa-dev xorg-dev
+          # GLFW enables both X11 and Wayland by default on Linux.
+          sudo apt-get install -y gcc pkg-config libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev
       - name: Install verified native Windows compiler
         if: runner.os == 'Windows'
         shell: pwsh
