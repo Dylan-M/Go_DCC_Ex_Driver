@@ -35,6 +35,7 @@ type State struct {
 }
 type Controller struct {
 	cabs                     map[int]cabRuntime
+	order                    []int
 	state                    State
 	sender                   Sender
 	pending                  *int
@@ -46,7 +47,7 @@ type Controller struct {
 }
 
 func New(toggle [29]bool) *Controller {
-	return &Controller{cabs: map[int]cabRuntime{3: {state: CabState{Cab: 3, Direction: 1}}}, state: State{Status: "Disconnected", Cab: 3, Direction: 1, Power: "power: unknown", Poll: true, ProgramResult: "result: --", Toggle: toggle}}
+	return &Controller{order: []int{3}, cabs: map[int]cabRuntime{3: {state: CabState{Cab: 3, Direction: 1}}}, state: State{Status: "Disconnected", Cab: 3, Direction: 1, Power: "power: unknown", Poll: true, ProgramResult: "result: --", Toggle: toggle}}
 }
 func (c *Controller) Snapshot() State {
 	s := c.state
@@ -164,6 +165,7 @@ func (c *Controller) selectCab(cab int, preservePending bool) error {
 	c.storeCab()
 	if _, ok := c.cabs[cab]; !ok {
 		c.cabs[cab] = cabRuntime{state: CabState{Cab: cab, Direction: 1}}
+		c.order = append(c.order, cab)
 	}
 	c.loadCab(cab)
 	c.Log("info", fmt.Sprintf("loco %d selected", cab))

@@ -30,23 +30,32 @@ func Open(ctx context.Context, o Connection) (io.ReadWriteCloser, error) {
 // Session serializes UI intents, station replies, and timers. Updates contain
 // snapshots, never live controller data. Slow views receive the latest state.
 type Session struct {
-	ctx     context.Context
-	cancel  context.CancelFunc
-	actions chan func(*Controller) error
-	updates chan State
-	done    chan struct{}
-	opener  Opener
-	save    func(config.Settings) error
-	current *client.Client // owned by run
+	ctx      context.Context
+	cancel   context.CancelFunc
+	actions  chan func(*Controller) error
+	updates  chan State
+	done     chan struct{}
+	opener   Opener
+	save     func(config.Settings) error
+	saveTabs func(config.ThrottleSettings) error
+	current  *client.Client // owned by run
 }
 
-func NewSession(settings config.Settings, opener Opener, save func(config.Settings) error) *Session {
+func NewSession(settings config.Settings, opener Opener, save func(config.Settings) error, tabs ...TabPersistence) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 	if opener == nil {
 		opener = Open
 	}
 	s := &Session{ctx: ctx, cancel: cancel, actions: make(chan func(*Controller) error, 128), updates: make(chan State, 1), done: make(chan struct{}), opener: opener, save: save}
-	go s.run(New(settings.Toggle))
+	c := New(settings.Toggle)
+	if len(tabs) > 0 {
+		if err := c.restoreTabs(tabs[0].Initial); err != nil {
+			c.Log("err", "Saved throttles unavailable: "+err.Error())
+		} else {
+			s.saveTabs = tabs[0].Save
+		}
+	}
+	go s.run(c)
 	return s
 }
 func (s *Session) Updates() <-chan State { return s.updates }
@@ -136,8 +145,18 @@ func (s *Session) run(c *Controller) {
 		case <-s.ctx.Done():
 			return
 		case fn := <-s.actions:
+			before := c.tabSettings()
 			if err := fn(c); err != nil {
 				c.Log("err", err.Error())
+			}
+			// Save only preference changes, not incoming broadcasts, speed ticks,
+			// power changes or disconnects. Save even if a state query failed
+			// after a valid tab change; the visible layout is still authoritative.
+			after := c.tabSettings()
+			if s.saveTabs != nil && !reflect.DeepEqual(before, after) {
+				if err := s.saveTabs(after); err != nil {
+					c.Log("err", "Could not save throttle tabs: "+err.Error())
+				}
 			}
 		case now := <-speed.C:
 			c.Tick(now)

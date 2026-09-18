@@ -117,3 +117,53 @@ func TestTabbedThrottles(t *testing.T) {
 		file.Close()
 	}
 }
+
+func TestRestoredTabOrderAndSelection(t *testing.T) {
+	a := test.NewTempApp(t)
+	w := a.NewWindow("restored tabs")
+	settings := config.ThrottleSettings{Version: 1, Tabs: []config.ThrottleTab{{Address: 42}, {Address: 3}, {Address: 7}}, Selected: 7}
+	s := th.NewSession(config.Default(), nil, nil, th.TabPersistence{Initial: settings})
+	t.Cleanup(func() { s.Close(); <-s.Done(); w.Close() })
+	v := New(w, s)
+	select {
+	case state := <-s.Updates():
+		v.Render(state)
+	case <-time.After(5 * time.Second):
+		t.Fatal("missing restored snapshot")
+	}
+	for i, address := range []int{42, 3, 7} {
+		if len(v.runTabs.Items) != 3 || v.runTabs.Items[i] != v.panels[address].tab {
+			t.Fatal("restored tab order", v.runTabs.Items)
+		}
+		if v.panels[address].speed.Value != 0 {
+			t.Fatal("restored speed")
+		}
+	}
+	if v.runTabs.Selected() != v.panels[7].tab {
+		t.Fatal("wrong restored selection")
+	}
+	if err := s.Post(func(c *th.Controller) error { return c.ReplaceCab(3, 99) }); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	for {
+		select {
+		case state := <-s.Updates():
+			v.Render(state)
+			if state.Cab == 99 {
+				for i, address := range []int{42, 99, 7} {
+					if v.runTabs.Items[i] != v.panels[address].tab {
+						t.Fatal("reassignment reordered tabs")
+					}
+				}
+				if v.runTabs.Selected() != v.panels[99].tab {
+					t.Fatal("replacement not selected")
+				}
+				return
+			}
+		case <-deadline.C:
+			t.Fatal("replacement snapshot timeout")
+		}
+	}
+}
