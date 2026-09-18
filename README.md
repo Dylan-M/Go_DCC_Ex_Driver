@@ -77,8 +77,19 @@ after the command station reports them.
 
 In **Run**, use **+ Throttle** to open another locomotive address. Each tab keeps
 its own speed, direction and function state. Stop a locomotive before closing
-or reassigning its throttle; at least one throttle stays open. Throttle tabs are
-not saved between application launches.
+or reassigning its throttle; at least one throttle stays open. Open tabs, their
+order and the selected locomotive are saved automatically between launches.
+Reassigning an address keeps the tab in its original position.
+
+Only the tab layout is restored, never speed, direction, function states or
+track power. Connecting queries the station for each restored locomotive's
+current state; restoring tabs does not start trains or automatically connect.
+The layout is stored in `throttles.json` in the application's private storage
+directory, separately from Python's configuration and the shared function-mode
+preferences. On first launch, the default is locomotive 3. If saved layout data
+is unreadable or unsupported, the console reports the problem, the default tab
+opens, and that file is left untouched for the session. Save failures are also
+reported in the console; a later layout change attempts another save.
 
 Tap either side of the purple direction selector, or drag it to Rev/Fwd. The
 speed slider runs from 0 to 126, the normal speed values used in 128-step mode;

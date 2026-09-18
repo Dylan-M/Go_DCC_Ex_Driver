@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 	th "github.com/Dylan-M/Go_DCC_Ex_Driver/throttle"
+	"slices"
 	"strconv"
 )
 
@@ -16,6 +17,7 @@ func (v *View) syncThrottles(s th.State) {
 		cabs = []th.CabState{{Cab: s.Cab, Speed: s.Speed, Direction: s.Direction, Functions: s.Functions}}
 	}
 	wanted := make(map[int]bool, len(cabs))
+	items := make([]*container.TabItem, 0, len(cabs))
 	for _, cab := range cabs {
 		wanted[cab.Cab] = true
 		panel := v.panels[cab.Cab]
@@ -23,15 +25,20 @@ func (v *View) syncThrottles(s th.State) {
 			panel = &throttlePanel{owner: v, address: cab.Cab}
 			panel.tab = container.NewTabItem(fmt.Sprintf("Loco %d", cab.Cab), panel.build())
 			v.panels[cab.Cab] = panel
-			v.runTabs.Append(panel.tab)
 		}
+		items = append(items, panel.tab)
 		panel.render(s, cab)
 	}
 	for cab, panel := range v.panels {
 		if !wanted[cab] {
-			v.runTabs.Remove(panel.tab)
+			for _, button := range panel.functions {
+				button.up()
+			}
 			delete(v.panels, cab)
 		}
+	}
+	if !slices.Equal(v.runTabs.Items, items) {
+		v.runTabs.SetItems(items)
 	}
 	if panel := v.panels[s.Cab]; panel != nil {
 		v.throttlePanel = panel

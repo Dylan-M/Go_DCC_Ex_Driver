@@ -3,7 +3,7 @@ package throttle
 import (
 	"errors"
 	p "github.com/Dylan-M/Go_DCC_Ex_Driver/dccex/protocol"
-	"sort"
+	"slices"
 	"time"
 )
 
@@ -31,13 +31,13 @@ func (c *Controller) loadCab(cab int) {
 }
 func (c *Controller) cabStates() []CabState {
 	result := make([]CabState, 0, len(c.cabs))
-	for cab, r := range c.cabs {
+	for _, cab := range c.order {
+		r := c.cabs[cab]
 		if cab == c.state.Cab {
 			r = c.currentCab()
 		}
 		result = append(result, r.state)
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].Cab < result[j].Cab })
 	return result
 }
 
@@ -64,6 +64,7 @@ func (c *Controller) AddCab(cab int) error {
 		return err
 	}
 	c.cabs[cab] = cabRuntime{state: CabState{Cab: cab, Direction: 1}}
+	c.order = append(c.order, cab)
 	return c.FocusCab(cab)
 }
 
@@ -90,6 +91,7 @@ func (c *Controller) RemoveCab(cab int) error {
 		return errors.New("stop this locomotive before closing or reassigning its throttle")
 	}
 	delete(c.cabs, cab)
+	c.order = slices.DeleteFunc(c.order, func(address int) bool { return address == cab })
 	if c.state.Cab == cab {
 		for _, other := range c.cabStates() {
 			c.loadCab(other.Cab)
@@ -117,12 +119,16 @@ func (c *Controller) ReplaceCab(old, next int) error {
 	if r.state.Speed != 0 || r.pending != nil {
 		return errors.New("stop this locomotive before reassigning its throttle")
 	}
-	// Add first so replacement also works when only one tab exists.
-	if err := c.AddCab(next); err != nil {
-		return err
+	// Keep the tab's position, including when it is the only open throttle.
+	c.cabs[next] = cabRuntime{state: CabState{Cab: next, Direction: 1}}
+	for i, address := range c.order {
+		if address == old {
+			c.order[i] = next
+		}
 	}
+	err := c.FocusCab(next)
 	delete(c.cabs, old)
-	return nil
+	return err
 }
 
 func (c *Controller) Tick(now time.Time) error {

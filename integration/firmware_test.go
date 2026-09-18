@@ -394,3 +394,49 @@ func TestFirmwareMultipleThrottles(t *testing.T) {
 	post(t, s, func(c *throttle.Controller) error { return c.Emergency() })
 	awaitState(t, s, func(v throttle.State) bool { return v.Throttles[0].Speed == 0 && v.Throttles[1].Speed == 0 })
 }
+
+func TestFirmwareRestoredTabsAdoptStationState(t *testing.T) {
+	f := startFirmware(t)
+	// Seed real firmware state as if another throttle were already driving.
+	seed := f.connect(t)
+	send(t, seed, p.EncodeStatus())
+	cmd, err := p.EncodeThrottle(42, 25, 0)
+	send(t, seed, encoded(t, cmd, err))
+	loco(t, seed, 42, 25, 0, 0, false)
+	cmd, err = p.EncodeFunction(42, 2, 1)
+	send(t, seed, encoded(t, cmd, err))
+	loco(t, seed, 42, 25, 0, 1<<2, false)
+	seed.Close()
+	f.closed(t)
+
+	settings := config.ThrottleSettings{Version: 1, Tabs: []config.ThrottleTab{{Address: 42}, {Address: 7}}, Selected: 7}
+	path := filepath.Join(t.TempDir(), "throttles.json")
+	if err := config.SaveThrottles(path, settings); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := config.LoadThrottles(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := throttle.NewSession(config.Default(), nil, nil, throttle.TabPersistence{
+		Initial: saved,
+		Save:    func(config.ThrottleSettings) error { return fmt.Errorf("station synchronization must not save layout") },
+	})
+	t.Cleanup(func() { s.Close(); <-s.Done() })
+	if err := s.Connect(throttle.Connection{Host: "127.0.0.1", Port: f.port}); err != nil {
+		t.Fatal(err)
+	}
+	state := awaitState(t, s, func(v throttle.State) bool {
+		return v.Connected && len(v.Throttles) == 2 && v.Throttles[0].Speed == 25 &&
+			v.Throttles[0].Direction == 0 && v.Throttles[0].Functions[2] && hasRX(v, "<l 7 -1 128 0>")
+	})
+	if state.Cab != 7 || state.Throttles[0].Cab != 42 || state.Throttles[1].Cab != 7 {
+		t.Fatal("station synchronization changed saved selection or order", state)
+	}
+	allowed := map[string]bool{">> <=>": true, ">> <s>": true, ">> <t 42>": true, ">> <t 7>": true}
+	for _, entry := range state.Logs {
+		if entry.Kind == "tx" && !allowed[entry.Text] {
+			t.Fatal("restoration sent an operating command", entry.Text)
+		}
+	}
+}
