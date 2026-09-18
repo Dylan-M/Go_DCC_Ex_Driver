@@ -88,11 +88,12 @@ Reassigning an address keeps the tab in its original position.
 Only the tab layout is restored, never speed, direction, function states or
 track power. Connecting queries the station for each restored locomotive's
 current state; restoring tabs does not start trains or automatically connect.
-The layout is stored in `throttles.json` in the application's private storage
-directory, separately from Python's configuration and the shared function-mode
-preferences. On first launch, the default is locomotive 3. If saved layout data
+Saved connections, tab layout and shared function-mode preferences are stored
+in one bbolt database, `stations.db`, in the application's private storage
+directory. Older JSON settings files are not imported or modified.
+On first launch, the default is locomotive 3. If saved layout data
 is unreadable or unsupported, the console reports the problem, the default tab
-opens, and that file is left untouched for the session. Save failures are also
+opens, and that record is left untouched for the session. Save failures are also
 reported in the console; a later layout change attempts another save.
 
 Tap either side of the purple direction selector, or drag it to Rev/Fwd. The

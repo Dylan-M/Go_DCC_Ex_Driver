@@ -32,9 +32,11 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	settings, path, loadErr := config.LoadDesktop()
 	a := app.NewWithID("com.github.Dylan-M.Go_DCC_Ex_Driver")
-	tabPersistence, tabErr := loadTabPersistence(a.Storage().RootURI())
+	settings := config.Default()
+	var saveSettings func(config.Settings) error
+	var loadErr, tabErr error
+	tabPersistence := throttle.TabPersistence{Initial: config.DefaultThrottles()}
 	var saved stations.Repository
 	dbPath, dbErr := stationDatabasePath(a.Storage().RootURI())
 	if dbErr == nil {
@@ -43,10 +45,15 @@ func run(args []string) error {
 		if dbErr == nil {
 			saved = db
 			defer db.Close()
+			settings, loadErr = db.LoadSettings()
+			if loadErr == nil {
+				saveSettings = db.SaveSettings
+			}
+			tabPersistence, tabErr = loadTabPersistence(db)
 		}
 	}
 	window := a.NewWindow("DCC-EX Native Throttle")
-	session := throttle.NewSession(settings, nil, func(s config.Settings) error { return config.Save(path, s) }, tabPersistence)
+	session := throttle.NewSession(settings, nil, saveSettings, tabPersistence)
 	view := fyneui.New(window, session, fyneui.Options{Host: options.Host, Port: options.Port, Stations: saved})
 	if tabErr != nil {
 		session.Post(func(c *throttle.Controller) error {
@@ -56,12 +63,15 @@ func run(args []string) error {
 	}
 	if dbErr != nil {
 		session.Post(func(c *throttle.Controller) error {
-			c.Log("err", "Saved stations unavailable: "+dbErr.Error())
+			c.Log("err", "Local database unavailable; stations, tabs and function settings will not be saved: "+dbErr.Error())
 			return nil
 		})
 	}
 	if loadErr != nil {
-		session.Post(func(c *throttle.Controller) error { c.Log("err", "Configuration: "+loadErr.Error()); return nil })
+		session.Post(func(c *throttle.Controller) error {
+			c.Log("err", "Function settings unavailable; changes will not be saved this session: "+loadErr.Error())
+			return nil
+		})
 	}
 	if err := connectOnLaunch(options, session.Connect); err != nil {
 		session.Post(func(c *throttle.Controller) error {
@@ -103,19 +113,15 @@ func stationDatabasePath(root fyne.URI) (string, error) {
 	return appStoragePath(root, "stations.db")
 }
 
-func loadTabPersistence(root fyne.URI) (throttle.TabPersistence, error) {
+func loadTabPersistence(db *stations.Store) (throttle.TabPersistence, error) {
 	persistence := throttle.TabPersistence{Initial: config.DefaultThrottles()}
-	path, err := appStoragePath(root, "throttles.json")
-	if err != nil {
-		return persistence, err
-	}
-	settings, err := config.LoadThrottles(path)
+	settings, err := db.LoadThrottles()
 	if err != nil {
 		// Do not replace damaged or newer settings with fallback defaults.
 		return persistence, err
 	}
 	persistence.Initial = settings
-	persistence.Save = func(s config.ThrottleSettings) error { return config.SaveThrottles(path, s) }
+	persistence.Save = db.SaveThrottles
 	return persistence, nil
 }
 
