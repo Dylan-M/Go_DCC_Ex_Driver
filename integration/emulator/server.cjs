@@ -35,7 +35,7 @@ const server = net.createServer({ allowHalfOpen: true }, connection => {
     log('tx', bytes.toString('ascii'));
     input.push(...bytes);
   });
-  // Drain accepted bytes into the UART after TCP FIN, including shutdown <0>.
+  // Drain already accepted bytes into the UART after TCP FIN.
   connection.on('end', () => { ended = true; settle = mega.cycles + 1_600_000; });
   connection.on('close', () => {
     // A client that closes without reading pending replies can cause a TCP

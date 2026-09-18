@@ -232,7 +232,7 @@ func TestCloseAndSnapshot(t *testing.T) {
 	c.Power(true, p.Main)
 	c.Raw(" D CABS ")
 	c.Close()
-	if !reflect.DeepEqual(s.commands, []string{"<1 MAIN>", "<D CABS>", "<0>"}) || !s.closed {
+	if !reflect.DeepEqual(s.commands, []string{"<1 MAIN>", "<D CABS>"}) || !s.closed {
 		t.Fatal("close", s.commands)
 	}
 	for i := 0; i < 600; i++ {
@@ -246,4 +246,46 @@ func TestCloseAndSnapshot(t *testing.T) {
 	if c.Snapshot().Logs[0].Text == "mutated" {
 		t.Fatal("snapshot aliases controller")
 	}
+}
+
+func TestCloseOnlyDisconnectsAndCancelsPendingCommands(t *testing.T) {
+	c, s := setup(t)
+	if err := c.AddCab(7); err != nil {
+		t.Fatal(err)
+	}
+	for _, address := range []int{3, 7} {
+		if err := c.WithCab(address, func(c *th.Controller) error { return c.MoveSpeed(35) }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.commands = nil
+	for i := 0; i < 2; i++ {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Tick(time.Now().Add(time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(s.commands) != 0 || !s.closed || c.Snapshot().Connected {
+		t.Fatal("close sent commands or left transport open", s.commands)
+	}
+	for _, cab := range c.Snapshot().Throttles {
+		if cab.Speed != 35 {
+			t.Fatal("close falsely reported a stopped locomotive", cab)
+		}
+	}
+	// Even if this controller is reused, no pre-close movement may be replayed.
+	connected := &sender{}
+	if err := c.Attach(connected, "again"); err != nil {
+		t.Fatal(err)
+	}
+	connected.commands = nil
+	if err := c.Tick(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if len(connected.commands) != 0 {
+		t.Fatal("close left pending commands", connected.commands)
+	}
+	c.Close()
 }
