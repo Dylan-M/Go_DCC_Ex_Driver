@@ -12,7 +12,7 @@ import (
 
 // ThrottleSettings contains preferences only. Live speed, direction, functions,
 // track power and connection state must always come from the command station.
-// Keep this Go-specific document separate from Python's dccex-throttle.json.
+// This versioned record is independent of Python's configuration format.
 type ThrottleSettings struct {
 	Version  int           `json:"version"`
 	Tabs     []ThrottleTab `json:"tabs"`
