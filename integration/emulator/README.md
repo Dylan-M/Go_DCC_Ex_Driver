@@ -50,15 +50,17 @@ override is not equivalent to the clean-build provenance check used by CI.
 - The production throttle session's speed, momentary F0, direction, stop, cab
   selection and power controls, checked against received firmware messages.
 - Session shutdown followed by a new connection querying the still-running
-  firmware, confirming power was turned off in firmware, not just local state.
+  firmware, confirming track power, locomotive speed, direction and functions
+  remain unchanged for other operators.
 - Detection of a deliberately broken TCP connection.
 
 Each test starts a fresh emulator and erased EEPROM, with one active TCP client
 on an ephemeral `127.0.0.1` port. Accepted input drains into the UART even after
 TCP closes or resets; the adapter reports closure only after draining and a
-short simulated settling period. This verifies the application's shutdown
-command in this adapter, **not** guaranteed delivery over an arbitrary failed
-real-world network. Cleanup stops the subprocess. Independent test deadlines
+short simulated settling period. This verifies delivery of accepted commands
+in this adapter, **not** guaranteed delivery over an arbitrary failed
+real-world network. Closing the app sends no power-off or stop command.
+Cleanup stops the subprocess. Independent test deadlines
 and a 120-second emulator lifetime prevent orphan listeners.
 
 The `firmware` build tag is opt-in. Once enabled, missing dependencies fail

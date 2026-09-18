@@ -313,6 +313,10 @@ func TestFirmwareSessionControlsAndShutdown(t *testing.T) {
 	awaitState(t, s, func(v throttle.State) bool { return v.Cab == 7 && hasRX(v, "<l 7 -1 128 0>") })
 	post(t, s, func(c *throttle.Controller) error { return c.Power(true, p.All) })
 	awaitState(t, s, func(v throttle.State) bool { return hasRX(v, "<p1>") })
+	post(t, s, func(c *throttle.Controller) error { return c.MoveSpeed(35) })
+	awaitState(t, s, func(v throttle.State) bool { return hasRX(v, "<l 7 0 164 0>") })
+	post(t, s, func(c *throttle.Controller) error { return c.Function(2, true) })
+	awaitState(t, s, func(v throttle.State) bool { return hasRX(v, "<l 7 0 164 4>") })
 	s.Close()
 	select {
 	case <-s.Done():
@@ -320,11 +324,14 @@ func TestFirmwareSessionControlsAndShutdown(t *testing.T) {
 		t.Fatal("session close timed out")
 	}
 	f.closed(t)
-	// Query the still-running firmware through a fresh production client. This
-	// proves Close's <0> reached firmware, rather than just changing local UI state.
+	// A new operator must observe unchanged power and locomotive state after
+	// this client closes. The shared layout does not belong to one throttle.
 	observer := f.connect(t)
 	send(t, observer, p.EncodeStatus())
-	awaitEvent(t, observer, func(e p.Event) bool { v, ok := e.(p.TrackPower); return ok && v.Track == "ALL" && v.State == p.Off })
+	awaitEvent(t, observer, func(e p.Event) bool { v, ok := e.(p.TrackPower); return ok && v.Track == "ALL" && v.State == p.On })
+	cmd, err := p.EncodeLocoRequest(7)
+	send(t, observer, encoded(t, cmd, err))
+	loco(t, observer, 7, 35, 1, 1<<2, false)
 	observer.Close()
 	f.closed(t)
 }

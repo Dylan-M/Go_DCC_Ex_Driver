@@ -114,13 +114,10 @@ func (c *Controller) Detach(reason string) {
 	c.state.TripMA = 0
 }
 func (c *Controller) Close() error {
-	var err error
-	if c.sender != nil {
-		cmd, _ := p.EncodePower(false, p.All)
-		err = c.send(cmd, false)
-	}
+	// This client does not own the shared layout. Closing it must not change
+	// track power or locomotive state for other operators.
 	c.Detach("Disconnected")
-	return err
+	return nil
 }
 func (c *Controller) send(cmd string, quiet bool) error {
 	if c.sender == nil {

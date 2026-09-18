@@ -73,6 +73,10 @@ explicit labels rather than an On/Off color.
 All On and All Off are fixed-color action buttons. State changes are displayed
 after the command station reports them.
 
+Closing or disconnecting the app leaves track power and locomotive operation
+unchanged for other operators. Use the power and stop controls explicitly when
+you want to shut down the layout or stop trains; exiting is not an emergency stop.
+
 ## Run locomotives
 
 In **Run**, use **+ Throttle** to open another locomotive address. Each tab keeps
