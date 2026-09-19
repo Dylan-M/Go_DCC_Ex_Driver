@@ -89,6 +89,11 @@ Use **Setup…** on a throttle to name its tab. Names update and save as you typ
 leave the name blank to display `Loco <address>`. Names support up to 80 Unicode
 characters and remain with the tab when its address changes.
 
+You can also double-click a locomotive tab title to edit its name in place.
+Press Enter or move focus away to save; Escape cancels. On Android, long-hold
+the tab title instead. Setup remains available, and function buttons keep their
+normal operating gestures.
+
 Only the tab layout is restored, never speed, direction, function states or
 track power. Connecting queries the station for each restored locomotive's
 current state; restoring tabs does not start trains or automatically connect.
