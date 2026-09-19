@@ -26,11 +26,22 @@ func (v *View) syncThrottles(s th.State) {
 			panel.tab = container.NewTabItem(fmt.Sprintf("Loco %d", cab.Cab), panel.build())
 			v.panels[cab.Cab] = panel
 		}
+		title := cab.Name
+		if title == "" {
+			title = fmt.Sprintf("Loco %d", cab.Cab)
+		}
+		if panel.tab.Text != title {
+			panel.tab.Text = title
+			v.runTabs.Refresh()
+		}
 		items = append(items, panel.tab)
 		panel.render(s, cab)
 	}
 	for cab, panel := range v.panels {
 		if !wanted[cab] {
+			if panel.setup != nil {
+				panel.setup.Hide()
+			}
 			for _, button := range panel.functions {
 				button.up()
 			}
