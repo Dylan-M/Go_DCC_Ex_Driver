@@ -44,10 +44,11 @@ type Controller struct {
 	lastSent                 time.Time
 	trackModes               [8]string
 	trackPowers              [8]p.PowerState
+	defaultToggle            [29]bool
 }
 
 func New(toggle [29]bool) *Controller {
-	return &Controller{order: []int{3}, cabs: map[int]cabRuntime{3: {state: CabState{Cab: 3, Direction: 1}}}, state: State{Status: "Disconnected", Cab: 3, Direction: 1, Power: "power: unknown", Poll: true, ProgramResult: "result: --", Toggle: toggle}}
+	return &Controller{defaultToggle: toggle, order: []int{3}, cabs: map[int]cabRuntime{3: {state: CabState{Cab: 3, Direction: 1, Toggle: toggle}}}, state: State{Status: "Disconnected", Cab: 3, Direction: 1, Power: "power: unknown", Poll: true, ProgramResult: "result: --", Toggle: toggle}}
 }
 func (c *Controller) Snapshot() State {
 	s := c.state
@@ -101,6 +102,7 @@ func (c *Controller) Detach(reason string) {
 	for cab, state := range c.cabs {
 		state.pending = nil
 		state.lastKnown = false
+		state.held = [29]bool{}
 		c.cabs[cab] = state
 	}
 	c.state.MainPower, c.state.ProgPower = "", ""
@@ -161,7 +163,7 @@ func (c *Controller) selectCab(cab int, preservePending bool) error {
 	}
 	c.storeCab()
 	if _, ok := c.cabs[cab]; !ok {
-		c.cabs[cab] = cabRuntime{state: CabState{Cab: cab, Direction: 1}}
+		c.cabs[cab] = cabRuntime{state: CabState{Cab: cab, Direction: 1, Toggle: c.defaultToggle}}
 		c.order = append(c.order, cab)
 	}
 	c.loadCab(cab)
@@ -286,7 +288,9 @@ func (c *Controller) Function(n int, pressed bool) error {
 	if !validFunction(n) {
 		return errors.New("function must be F0-F28")
 	}
-	toggle := c.state.Toggle[n]
+	// A momentary press still needs its matching release if the user changes
+	// this function to toggle mode while holding the button.
+	toggle := c.state.Toggle[n] && !(c.cabs[c.state.Cab].held[n] && !pressed)
 	if toggle && !pressed {
 		return nil
 	}
@@ -301,6 +305,9 @@ func (c *Controller) Function(n int, pressed bool) error {
 	if err := c.command(p.EncodeFunction(c.state.Cab, n, value)); err != nil {
 		return err
 	}
+	r := c.cabs[c.state.Cab]
+	r.held[n] = pressed && !toggle
+	c.cabs[c.state.Cab] = r
 	if toggle {
 		c.state.Functions[n] = on
 	}

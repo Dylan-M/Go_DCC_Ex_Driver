@@ -119,7 +119,7 @@ writes add a little overhead; avoid slow output destinations when comparing runs
 Only the tab layout is restored, never speed, direction, function states or
 track power. Connecting queries the station for each restored locomotive's
 current state; restoring tabs does not start trains or automatically connect.
-Saved connections, tab layout and shared function-mode preferences are stored
+Saved connections, tab layout and per-tab function-mode preferences are stored
 in one bbolt database, `stations.db`, in the application's private storage
 directory. Older JSON settings files are not imported or modified.
 On first launch, the default is locomotive 3. If saved layout data
@@ -131,9 +131,12 @@ Tap either side of the purple direction selector, or drag it to Rev/Fwd. The
 speed slider runs from 0 to 126, the normal speed values used in 128-step mode;
 stop and emergency-stop encodings account for the other values.
 
-Function buttons support momentary and toggle behavior. Use **Function modes…**
-to configure them. Track power, emergency stop and function-mode preferences
-are shared across throttles.
+Function buttons support momentary and toggle behavior. In **Setup…**, check
+**Toggle** for a latched function; unchecked functions act only while held.
+Right-clicking a function also changes its mode. Modes are saved independently
+per tab, and toggle buttons show `↕`. New tabs default to F3 toggle and all other
+functions momentary. Legacy shared mode settings are not imported.
+Track power and emergency stop remain shared across throttles.
 
 ## Programming
 

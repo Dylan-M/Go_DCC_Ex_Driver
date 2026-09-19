@@ -13,7 +13,7 @@ func setupView(t *testing.T) (*View, *th.Session) {
 	t.Helper()
 	a := test.NewTempApp(t)
 	w := a.NewWindow("setup")
-	s := th.NewSession(config.Default(), nil, nil)
+	s := th.NewSession(config.Default(), nil)
 	t.Cleanup(func() { s.Close(); <-s.Done(); w.Close() })
 	v := New(w, s)
 	renderUntil(t, v, s, func(state th.State) bool { return len(state.Throttles) == 1 })

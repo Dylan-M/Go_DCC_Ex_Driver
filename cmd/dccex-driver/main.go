@@ -34,8 +34,7 @@ func run(args []string) error {
 	}
 	a := app.NewWithID("com.github.Dylan-M.Go_DCC_Ex_Driver")
 	settings := config.Default()
-	var saveSettings func(config.Settings) error
-	var loadErr, tabErr error
+	var tabErr error
 	tabPersistence := throttle.TabPersistence{Initial: config.DefaultThrottles()}
 	var saved stations.Repository
 	dbPath, dbErr := stationDatabasePath(a.Storage().RootURI())
@@ -45,15 +44,11 @@ func run(args []string) error {
 		if dbErr == nil {
 			saved = db
 			defer db.Close()
-			settings, loadErr = db.LoadSettings()
-			if loadErr == nil {
-				saveSettings = db.SaveSettings
-			}
 			tabPersistence, tabErr = loadTabPersistence(db)
 		}
 	}
 	window := a.NewWindow("DCC-EX Native Throttle")
-	session := throttle.NewSession(settings, nil, saveSettings, tabPersistence)
+	session := throttle.NewSession(settings, nil, tabPersistence)
 	view := fyneui.New(window, session, fyneui.Options{Host: options.Host, Port: options.Port, Stations: saved})
 	if tabErr != nil {
 		session.Post(func(c *throttle.Controller) error {
@@ -64,12 +59,6 @@ func run(args []string) error {
 	if dbErr != nil {
 		session.Post(func(c *throttle.Controller) error {
 			c.Log("err", "Local database unavailable; stations, tabs and function settings will not be saved: "+dbErr.Error())
-			return nil
-		})
-	}
-	if loadErr != nil {
-		session.Post(func(c *throttle.Controller) error {
-			c.Log("err", "Function settings unavailable; changes will not be saved this session: "+loadErr.Error())
 			return nil
 		})
 	}

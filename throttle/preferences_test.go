@@ -29,7 +29,7 @@ func sessionSnapshot(t *testing.T, s *th.Session) th.State {
 
 func tabSession(t *testing.T, tabs th.TabPersistence) *th.Session {
 	t.Helper()
-	s := th.NewSession(config.Default(), nil, nil, tabs)
+	s := th.NewSession(config.Default(), nil, tabs)
 	t.Cleanup(func() { s.Close(); <-s.Done() })
 	return s
 }

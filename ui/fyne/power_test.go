@@ -16,7 +16,7 @@ func (powerTestSender) Close() error      { return nil }
 func TestPersistentPowerIndicators(t *testing.T) {
 	a := test.NewTempApp(t)
 	w := a.NewWindow("power test")
-	session := th.NewSession(config.Default(), nil, nil)
+	session := th.NewSession(config.Default(), nil)
 	t.Cleanup(func() { session.Close(); <-session.Done(); w.Close() })
 	v := New(w, session)
 	c := th.New(config.Default().Toggle)
