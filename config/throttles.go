@@ -20,8 +20,9 @@ type ThrottleSettings struct {
 }
 
 type ThrottleTab struct {
-	Address int    `json:"address"`
-	Name    string `json:"name,omitempty"`
+	Address int        `json:"address"`
+	Name    string     `json:"name,omitempty"`
+	Labels  [29]string `json:"labels,omitempty"`
 }
 
 func DefaultThrottles() ThrottleSettings {
@@ -39,6 +40,11 @@ func (s ThrottleSettings) Validate() error {
 	for _, tab := range s.Tabs {
 		if err := ValidateDisplayName(tab.Name); err != nil {
 			return err
+		}
+		for _, label := range tab.Labels {
+			if err := ValidateDisplayName(label); err != nil {
+				return err
+			}
 		}
 		if tab.Address < 1 || tab.Address > 10293 || seen[tab.Address] {
 			return fmt.Errorf("invalid or duplicate saved locomotive address %d", tab.Address)

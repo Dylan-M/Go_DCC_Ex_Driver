@@ -20,7 +20,7 @@ func (c *Controller) restoreTabs(settings config.ThrottleSettings) error {
 	c.cabs = make(map[int]cabRuntime, len(settings.Tabs))
 	c.order = make([]int, 0, len(settings.Tabs))
 	for _, tab := range settings.Tabs {
-		c.cabs[tab.Address] = cabRuntime{state: CabState{Cab: tab.Address, Direction: 1, Name: tab.Name}}
+		c.cabs[tab.Address] = cabRuntime{state: CabState{Cab: tab.Address, Direction: 1, Name: tab.Name, Labels: tab.Labels}}
 		c.order = append(c.order, tab.Address)
 	}
 	c.loadCab(settings.Selected)
@@ -30,7 +30,7 @@ func (c *Controller) restoreTabs(settings config.ThrottleSettings) error {
 func (c *Controller) tabSettings() config.ThrottleSettings {
 	s := config.ThrottleSettings{Version: 1, Selected: c.state.Cab}
 	for _, address := range c.order {
-		s.Tabs = append(s.Tabs, config.ThrottleTab{Address: address, Name: c.cabs[address].state.Name})
+		s.Tabs = append(s.Tabs, config.ThrottleTab{Address: address, Name: c.cabs[address].state.Name, Labels: c.cabs[address].state.Labels})
 	}
 	return s
 }
@@ -45,6 +45,23 @@ func (c *Controller) RenameCab(cab int, name string) error {
 		return err
 	}
 	r.state.Name = strings.TrimSpace(name)
+	c.cabs[cab] = r
+	return nil
+}
+
+// SetFunctionLabel changes only this tab's presentation, not its function state.
+func (c *Controller) SetFunctionLabel(cab, n int, label string) error {
+	r, ok := c.cabs[cab]
+	if !ok {
+		return errors.New("throttle has been closed")
+	}
+	if !validFunction(n) {
+		return errors.New("function must be F0-F28")
+	}
+	if err := config.ValidateDisplayName(label); err != nil {
+		return err
+	}
+	r.state.Labels[n] = strings.TrimSpace(label)
 	c.cabs[cab] = r
 	return nil
 }

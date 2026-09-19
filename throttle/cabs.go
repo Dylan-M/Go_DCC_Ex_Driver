@@ -11,6 +11,7 @@ type CabState struct {
 	Cab, Speed, Direction int
 	Functions             [29]bool
 	Name                  string
+	Labels                [29]string
 }
 
 type cabRuntime struct {
@@ -124,7 +125,7 @@ func (c *Controller) ReplaceCab(old, next int) error {
 		return errors.New("stop this locomotive before reassigning its throttle")
 	}
 	// Keep the tab's position, including when it is the only open throttle.
-	c.cabs[next] = cabRuntime{state: CabState{Cab: next, Direction: 1, Name: r.state.Name}}
+	c.cabs[next] = cabRuntime{state: CabState{Cab: next, Direction: 1, Name: r.state.Name, Labels: r.state.Labels}}
 	for i, address := range c.order {
 		if address == old {
 			c.order[i] = next

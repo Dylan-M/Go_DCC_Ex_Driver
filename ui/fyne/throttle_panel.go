@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	th "github.com/Dylan-M/Go_DCC_Ex_Driver/throttle"
 	"image/color"
@@ -14,21 +15,24 @@ import (
 )
 
 type throttlePanel struct {
-	owner       *View
-	address     int
-	rendering   bool
-	last        th.State
-	tab         *container.TabItem
-	cab         *widget.Entry
-	direction   *DirectionSwitch
-	speed       *widget.Slider
-	speedLabel  *widget.Label
-	functions   [29]*FunctionButton
-	lamps       [29]*canvas.Rectangle
-	setup       *dialog.CustomDialog
-	name        *widget.Entry
-	setupButton *widget.Button
-	preferences th.CabState
+	owner           *View
+	address         int
+	rendering       bool
+	last            th.State
+	tab             *container.TabItem
+	cab             *widget.Entry
+	direction       *DirectionSwitch
+	speed           *widget.Slider
+	speedLabel      *widget.Label
+	functions       [29]*FunctionButton
+	lamps           [29]*canvas.Rectangle
+	setup           *dialog.CustomDialog
+	name            *widget.Entry
+	setupButton     *widget.Button
+	preferences     th.CabState
+	labels          [29]*widget.Entry
+	functionGrid    *fyne.Container
+	functionColumns int
 }
 
 func (t *throttlePanel) post(fn func(*th.Controller) error) {
@@ -88,9 +92,11 @@ func (t *throttlePanel) build() fyne.CanvasObject {
 		}
 		dialog.ShowCustom("Function modes", "Done", container.NewGridWithColumns(4, checks...), t.owner.Window)
 	})
+	t.functionGrid = container.NewGridWithColumns(10, funcs...)
+	t.functionColumns = 10
 	t.setupButton = widget.NewButton("Setup…", t.showSetup)
 	body := container.NewVBox(container.NewBorder(nil, nil, nil, t.setupButton, widget.NewLabel("Locomotive address")), controls, t.speedLabel, t.speed, widget.NewSeparator(),
-		widget.NewLabel("Functions — hold for momentary; right-click to change mode"), container.NewGridWithColumns(10, funcs...),
+		widget.NewLabel("Functions — hold for momentary; right-click to change mode"), t.functionGrid,
 		container.NewHBox(widget.NewButton("All Functions Off", func() { t.post(func(c *th.Controller) error { return c.AllFunctionsOff() }) }), modes))
 	return container.NewVScroll(body)
 }
@@ -114,8 +120,14 @@ func (t *throttlePanel) render(global th.State, cab th.CabState) {
 	} else {
 		t.direction.Disable()
 	}
+	columns := 10
 	for n, b := range t.functions {
-		label := fmt.Sprintf("F%d", n)
+		label := cab.Labels[n]
+		if label == "" {
+			label = fmt.Sprintf("F%d", n)
+		} else {
+			columns = 6
+		}
 		if global.Toggle[n] {
 			label += " ↕"
 		}
@@ -125,6 +137,11 @@ func (t *throttlePanel) render(global th.State, cab th.CabState) {
 			t.lamps[n].StrokeColor = green
 		}
 		t.lamps[n].Refresh()
+	}
+	if columns != t.functionColumns {
+		t.functionColumns = columns
+		t.functionGrid.Layout = layout.NewGridLayoutWithColumns(columns)
+		t.functionGrid.Refresh()
 	}
 	t.last = global
 	t.last.Cab, t.last.Speed, t.last.Direction, t.last.Functions = cab.Cab, cab.Speed, cab.Direction, cab.Functions
