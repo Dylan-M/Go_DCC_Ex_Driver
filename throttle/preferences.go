@@ -75,3 +75,21 @@ func (c *Controller) SetFunctionLabel(cab, n int, label string) error {
 func (s *Session) SetFunctionLabel(cab, n int, label string) error {
 	return s.enqueue(sessionAction{preference: true, apply: func(c *Controller) error { return c.SetFunctionLabel(cab, n, label) }})
 }
+
+// SetFunctionToggle preserves the originating cab and survives session close.
+func (s *Session) SetFunctionToggle(cab, n int, on bool) error {
+	return s.enqueue(sessionAction{preference: true, apply: func(c *Controller) error {
+		return c.WithCab(cab, func(c *Controller) error { return c.SetToggle(n, on) })
+	}})
+}
+
+// FlipFunctionToggle reads the mode when the intent executes, not from a
+// potentially stale UI snapshot when several flips are queued together.
+func (s *Session) FlipFunctionToggle(cab, n int) error {
+	return s.enqueue(sessionAction{preference: true, apply: func(c *Controller) error {
+		if !validFunction(n) {
+			return errors.New("function must be F0-F28")
+		}
+		return c.WithCab(cab, func(c *Controller) error { return c.SetToggle(n, !c.state.Toggle[n]) })
+	}})
+}

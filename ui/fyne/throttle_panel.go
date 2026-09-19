@@ -77,7 +77,7 @@ func (t *throttlePanel) build() fyne.CanvasObject {
 	controls := container.NewGridWithColumns(4, container.NewBorder(nil, nil, nil, selectCab, t.cab), t.direction, colored(stop, orange), colored(estop, red))
 	var funcs []fyne.CanvasObject
 	for n := 0; n < 29; n++ {
-		t.functions[n] = newFunctionButton(fmt.Sprintf("F%d", n), func() { t.post(func(c *th.Controller) error { return c.Function(n, true) }) }, func() { t.post(func(c *th.Controller) error { return c.Function(n, false) }) }, func() { t.post(func(c *th.Controller) error { return c.SetToggle(n, !c.Snapshot().Toggle[n]) }) })
+		t.functions[n] = newFunctionButton(fmt.Sprintf("F%d", n), func() { t.post(func(c *th.Controller) error { return c.Function(n, true) }) }, func() { t.post(func(c *th.Controller) error { return c.Function(n, false) }) }, func() { t.showError(t.owner.session.FlipFunctionToggle(t.address, n)) })
 		lamp := canvas.NewRectangle(color.Transparent)
 		lamp.StrokeWidth = 3
 		t.lamps[n] = lamp
