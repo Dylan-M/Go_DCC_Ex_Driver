@@ -46,7 +46,7 @@ func (t *throttlePanel) showSetup() {
 		show.SetChecked(!t.preferences.Hidden[n])
 		show.OnChanged = func(on bool) {
 			if !t.rendering {
-				t.owner.post(func(c *th.Controller) error { return c.SetFunctionHidden(cab, n, !on) })
+				t.showError(t.owner.session.SetFunctionHidden(cab, n, !on))
 			}
 		}
 		t.shown[n] = show

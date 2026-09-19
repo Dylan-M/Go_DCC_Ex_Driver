@@ -111,3 +111,8 @@ func (c *Controller) SetFunctionHidden(cab, n int, hidden bool) error {
 	c.cabs[cab] = r
 	return nil
 }
+
+// SetFunctionHidden queues visibility without dropping it on immediate close.
+func (s *Session) SetFunctionHidden(cab, n int, hidden bool) error {
+	return s.enqueue(sessionAction{preference: true, apply: func(c *Controller) error { return c.SetFunctionHidden(cab, n, hidden) }})
+}
