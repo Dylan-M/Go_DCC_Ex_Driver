@@ -33,6 +33,7 @@ type throttlePanel struct {
 	labels          [29]*widget.Entry
 	functionGrid    *fyne.Container
 	functionColumns int
+	modes           [29]*widget.Check
 }
 
 func (t *throttlePanel) post(fn func(*th.Controller) error) {
@@ -76,28 +77,18 @@ func (t *throttlePanel) build() fyne.CanvasObject {
 	controls := container.NewGridWithColumns(4, container.NewBorder(nil, nil, nil, selectCab, t.cab), t.direction, colored(stop, orange), colored(estop, red))
 	var funcs []fyne.CanvasObject
 	for n := 0; n < 29; n++ {
-		t.functions[n] = newFunctionButton(fmt.Sprintf("F%d", n), func() { t.post(func(c *th.Controller) error { return c.Function(n, true) }) }, func() { t.post(func(c *th.Controller) error { return c.Function(n, false) }) }, func() { t.showError(t.owner.session.SetToggle(n, !t.last.Toggle[n])) })
+		t.functions[n] = newFunctionButton(fmt.Sprintf("F%d", n), func() { t.post(func(c *th.Controller) error { return c.Function(n, true) }) }, func() { t.post(func(c *th.Controller) error { return c.Function(n, false) }) }, func() { t.post(func(c *th.Controller) error { return c.SetToggle(n, !c.Snapshot().Toggle[n]) }) })
 		lamp := canvas.NewRectangle(color.Transparent)
 		lamp.StrokeWidth = 3
 		t.lamps[n] = lamp
 		funcs = append(funcs, container.NewStack(lamp, container.NewPadded(t.functions[n])))
 	}
-	modes := widget.NewButton("Function modes…", func() {
-		var checks []fyne.CanvasObject
-		for n := 0; n < 29; n++ {
-			check := widget.NewCheck(fmt.Sprintf("F%d toggle", n), nil)
-			check.SetChecked(t.last.Toggle[n])
-			check.OnChanged = func(on bool) { t.showError(t.owner.session.SetToggle(n, on)) }
-			checks = append(checks, check)
-		}
-		dialog.ShowCustom("Function modes", "Done", container.NewGridWithColumns(4, checks...), t.owner.Window)
-	})
 	t.functionGrid = container.NewGridWithColumns(10, funcs...)
 	t.functionColumns = 10
 	t.setupButton = widget.NewButton("Setup…", t.showSetup)
 	body := container.NewVBox(container.NewBorder(nil, nil, nil, t.setupButton, widget.NewLabel("Locomotive address")), controls, t.speedLabel, t.speed, widget.NewSeparator(),
 		widget.NewLabel("Functions — hold for momentary; right-click to change mode"), t.functionGrid,
-		container.NewHBox(widget.NewButton("All Functions Off", func() { t.post(func(c *th.Controller) error { return c.AllFunctionsOff() }) }), modes))
+		container.NewHBox(widget.NewButton("All Functions Off", func() { t.post(func(c *th.Controller) error { return c.AllFunctionsOff() }) })))
 	return container.NewVScroll(body)
 }
 
@@ -128,12 +119,15 @@ func (t *throttlePanel) render(global th.State, cab th.CabState) {
 		} else {
 			columns = 6
 		}
-		b.SetLabel(label, global.Toggle[n])
+		b.SetLabel(label, cab.Toggle[n])
 		t.lamps[n].StrokeColor = color.Transparent
 		if cab.Functions[n] {
 			t.lamps[n].StrokeColor = green
 		}
 		t.lamps[n].Refresh()
+		if t.setup != nil {
+			t.modes[n].SetChecked(cab.Toggle[n])
+		}
 	}
 	if columns != t.functionColumns {
 		t.functionColumns = columns

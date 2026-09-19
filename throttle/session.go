@@ -38,7 +38,6 @@ type Session struct {
 	updates  chan State
 	done     chan struct{}
 	opener   Opener
-	save     func(config.Settings) error
 	saveTabs func(config.ThrottleSettings) error
 	current  *client.Client // owned by run
 }
@@ -48,12 +47,12 @@ type sessionAction struct {
 	preference bool
 }
 
-func NewSession(settings config.Settings, opener Opener, save func(config.Settings) error, tabs ...TabPersistence) *Session {
+func NewSession(settings config.Settings, opener Opener, tabs ...TabPersistence) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 	if opener == nil {
 		opener = Open
 	}
-	s := &Session{ctx: ctx, cancel: cancel, actions: make(chan sessionAction, 128), updates: make(chan State, 1), done: make(chan struct{}), opener: opener, save: save}
+	s := &Session{ctx: ctx, cancel: cancel, actions: make(chan sessionAction, 128), updates: make(chan State, 1), done: make(chan struct{}), opener: opener}
 	c := New(settings.Toggle)
 	if len(tabs) > 0 {
 		if err := c.restoreTabs(tabs[0].Initial); err != nil {
@@ -124,17 +123,6 @@ func (s *Session) Connect(o Connection) error {
 			c.state.ActiveConnection = o
 		}
 		return err
-	})
-}
-func (s *Session) SetToggle(n int, on bool) error {
-	return s.Post(func(c *Controller) error {
-		if err := c.SetToggle(n, on); err != nil {
-			return err
-		}
-		if s.save != nil {
-			return s.save(config.Settings{Toggle: c.Snapshot().Toggle})
-		}
-		return nil
 	})
 }
 func (s *Session) publish(state State) {

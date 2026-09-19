@@ -31,7 +31,7 @@ func TestSavedStationsAndStartupFields(t *testing.T) {
 	if err := db.Save(p, false); err != nil {
 		t.Fatal(err)
 	}
-	s := th.NewSession(config.Default(), nil, nil)
+	s := th.NewSession(config.Default(), nil)
 	t.Cleanup(func() { s.Close(); <-s.Done(); w.Close() })
 	v := New(w, s, Options{Host: "localhost", Port: 5555, Stations: db})
 	if v.host.Text != "localhost" || v.port.Text != "5555" || v.savedStations.Selected != "" {
@@ -131,7 +131,7 @@ func TestDeleteStationRestoresActiveConnection(t *testing.T) {
 			s := th.NewSession(config.Default(), func(_ context.Context, got th.Connection) (io.ReadWriteCloser, error) {
 				opens.Add(1)
 				return conn, nil
-			}, nil)
+			})
 			t.Cleanup(func() { s.Close(); <-s.Done(); peer.Close(); <-done; w.Close() })
 			v := New(w, s, Options{Stations: db})
 			if err := s.Post(func(c *th.Controller) error { c.SetPoll(false); return nil }); err != nil {

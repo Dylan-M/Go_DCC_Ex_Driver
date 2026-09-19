@@ -30,7 +30,7 @@ func TestPowerButtonsFollowStationReplies(t *testing.T) {
 			commands <- scan.Text()
 		}
 	}()
-	s := th.NewSession(config.Default(), func(context.Context, th.Connection) (io.ReadWriteCloser, error) { return conn, nil }, nil)
+	s := th.NewSession(config.Default(), func(context.Context, th.Connection) (io.ReadWriteCloser, error) { return conn, nil })
 	t.Cleanup(func() { s.Close(); <-s.Done(); peer.Close(); <-readerDone; w.Close() })
 	v := New(w, s)
 	if !v.mainPower.Disabled() || !v.progPower.Disabled() || !v.allOn.Disabled() || !v.allOff.Disabled() {

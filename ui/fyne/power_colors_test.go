@@ -19,7 +19,7 @@ import (
 func TestPowerButtonPalette(t *testing.T) {
 	a := test.NewTempApp(t)
 	w := a.NewWindow("Power colors")
-	s := th.NewSession(config.Default(), nil, nil)
+	s := th.NewSession(config.Default(), nil)
 	t.Cleanup(func() { s.Close(); <-s.Done(); w.Close() })
 	v := New(w, s)
 	connection := v.tabs.Items[0].Content.(*container.Scroll).Content.(*fyne.Container)

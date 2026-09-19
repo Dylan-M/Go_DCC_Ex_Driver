@@ -20,7 +20,11 @@ func (c *Controller) restoreTabs(settings config.ThrottleSettings) error {
 	c.cabs = make(map[int]cabRuntime, len(settings.Tabs))
 	c.order = make([]int, 0, len(settings.Tabs))
 	for _, tab := range settings.Tabs {
-		c.cabs[tab.Address] = cabRuntime{state: CabState{Cab: tab.Address, Direction: 1, Name: tab.Name, Labels: tab.Labels}}
+		toggle := c.defaultToggle
+		if tab.Toggle != nil {
+			toggle = *tab.Toggle
+		}
+		c.cabs[tab.Address] = cabRuntime{state: CabState{Cab: tab.Address, Direction: 1, Name: tab.Name, Labels: tab.Labels, Toggle: toggle}}
 		c.order = append(c.order, tab.Address)
 	}
 	c.loadCab(settings.Selected)
@@ -29,8 +33,9 @@ func (c *Controller) restoreTabs(settings config.ThrottleSettings) error {
 
 func (c *Controller) tabSettings() config.ThrottleSettings {
 	s := config.ThrottleSettings{Version: 1, Selected: c.state.Cab}
-	for _, address := range c.order {
-		s.Tabs = append(s.Tabs, config.ThrottleTab{Address: address, Name: c.cabs[address].state.Name, Labels: c.cabs[address].state.Labels})
+	for _, cab := range c.cabStates() {
+		toggle := cab.Toggle
+		s.Tabs = append(s.Tabs, config.ThrottleTab{Address: cab.Cab, Name: cab.Name, Labels: cab.Labels, Toggle: &toggle})
 	}
 	return s
 }

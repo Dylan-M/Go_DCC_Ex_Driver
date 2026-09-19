@@ -23,6 +23,7 @@ type ThrottleTab struct {
 	Address int        `json:"address"`
 	Name    string     `json:"name,omitempty"`
 	Labels  [29]string `json:"labels,omitempty"`
+	Toggle  *[29]bool  `json:"toggle,omitempty"`
 }
 
 func DefaultThrottles() ThrottleSettings {

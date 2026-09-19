@@ -15,7 +15,7 @@ import (
 func TestTabbedThrottles(t *testing.T) {
 	a := test.NewTempApp(t)
 	w := a.NewWindow("tabs")
-	s := th.NewSession(config.Default(), nil, nil)
+	s := th.NewSession(config.Default(), nil)
 	t.Cleanup(func() { s.Close(); <-s.Done(); w.Close() })
 	v := New(w, s)
 	if len(v.tabs.Items) != 3 || v.tabs.Items[0].Text != "Connection" || v.tabs.Items[1].Text != "Run" || v.tabs.Items[2].Text != "Programming" {
@@ -122,7 +122,7 @@ func TestRestoredTabOrderAndSelection(t *testing.T) {
 	a := test.NewTempApp(t)
 	w := a.NewWindow("restored tabs")
 	settings := config.ThrottleSettings{Version: 1, Tabs: []config.ThrottleTab{{Address: 42}, {Address: 3}, {Address: 7}}, Selected: 7}
-	s := th.NewSession(config.Default(), nil, nil, th.TabPersistence{Initial: settings})
+	s := th.NewSession(config.Default(), nil, th.TabPersistence{Initial: settings})
 	t.Cleanup(func() { s.Close(); <-s.Done(); w.Close() })
 	v := New(w, s)
 	select {

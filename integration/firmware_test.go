@@ -281,7 +281,7 @@ func post(t *testing.T, s *throttle.Session, fn func(*throttle.Controller) error
 }
 func session(t *testing.T, f *firmware) *throttle.Session {
 	t.Helper()
-	s := throttle.NewSession(config.Default(), nil, nil)
+	s := throttle.NewSession(config.Default(), nil)
 	t.Cleanup(func() {
 		s.Close()
 		select {
@@ -425,7 +425,7 @@ func TestFirmwareRestoredTabsAdoptStationState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := throttle.NewSession(config.Default(), nil, nil, throttle.TabPersistence{
+	s := throttle.NewSession(config.Default(), nil, throttle.TabPersistence{
 		Initial: saved,
 		Save:    func(config.ThrottleSettings) error { return fmt.Errorf("station synchronization must not save layout") },
 	})

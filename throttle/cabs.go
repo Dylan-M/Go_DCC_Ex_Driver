@@ -12,6 +12,7 @@ type CabState struct {
 	Functions             [29]bool
 	Name                  string
 	Labels                [29]string
+	Toggle                [29]bool
 }
 
 type cabRuntime struct {
@@ -20,11 +21,13 @@ type cabRuntime struct {
 	lastSpeed, lastDirection int
 	lastKnown                bool
 	lastSent                 time.Time
+	held                     [29]bool
 }
 
 func (c *Controller) currentCab() cabRuntime {
 	r := c.cabs[c.state.Cab]
 	r.state.Cab, r.state.Speed, r.state.Direction, r.state.Functions = c.state.Cab, c.state.Speed, c.state.Direction, c.state.Functions
+	r.state.Toggle = c.state.Toggle
 	r.pending, r.lastSpeed, r.lastDirection, r.lastKnown, r.lastSent = c.pending, c.lastSpeed, c.lastDirection, c.lastKnown, c.lastSent
 	return r
 }
@@ -32,6 +35,7 @@ func (c *Controller) storeCab() { c.cabs[c.state.Cab] = c.currentCab() }
 func (c *Controller) loadCab(cab int) {
 	r := c.cabs[cab]
 	c.state.Cab, c.state.Speed, c.state.Direction, c.state.Functions = r.state.Cab, r.state.Speed, r.state.Direction, r.state.Functions
+	c.state.Toggle = r.state.Toggle
 	c.pending, c.lastSpeed, c.lastDirection, c.lastKnown, c.lastSent = r.pending, r.lastSpeed, r.lastDirection, r.lastKnown, r.lastSent
 }
 func (c *Controller) cabStates() []CabState {
@@ -68,7 +72,7 @@ func (c *Controller) AddCab(cab int) error {
 	if _, err := p.EncodeLocoRequest(cab); err != nil {
 		return err
 	}
-	c.cabs[cab] = cabRuntime{state: CabState{Cab: cab, Direction: 1}}
+	c.cabs[cab] = cabRuntime{state: CabState{Cab: cab, Direction: 1, Toggle: c.defaultToggle}}
 	c.order = append(c.order, cab)
 	return c.FocusCab(cab)
 }
@@ -125,7 +129,7 @@ func (c *Controller) ReplaceCab(old, next int) error {
 		return errors.New("stop this locomotive before reassigning its throttle")
 	}
 	// Keep the tab's position, including when it is the only open throttle.
-	c.cabs[next] = cabRuntime{state: CabState{Cab: next, Direction: 1, Name: r.state.Name, Labels: r.state.Labels}}
+	c.cabs[next] = cabRuntime{state: CabState{Cab: next, Direction: 1, Name: r.state.Name, Labels: r.state.Labels, Toggle: r.state.Toggle}}
 	for i, address := range c.order {
 		if address == old {
 			c.order[i] = next
