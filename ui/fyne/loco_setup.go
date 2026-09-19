@@ -38,7 +38,7 @@ func (t *throttlePanel) showSetup() {
 		mode.SetChecked(t.preferences.Toggle[n])
 		mode.OnChanged = func(on bool) {
 			if !t.rendering {
-				t.post(func(c *th.Controller) error { return c.SetToggle(n, on) })
+				t.showError(t.owner.session.SetFunctionToggle(cab, n, on))
 			}
 		}
 		t.modes[n] = mode
