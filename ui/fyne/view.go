@@ -42,7 +42,7 @@ func colored(b *widget.Button, c color.Color) fyne.CanvasObject {
 type View struct {
 	*throttlePanel
 	tabs                        *container.AppTabs
-	runTabs                     *container.DocTabs
+	runTabs                     *locoTabs
 	panels                      map[int]*throttlePanel
 	programmingTabs             *container.AppTabs
 	pomAddress, pomCV, pomValue *widget.Entry
@@ -173,7 +173,21 @@ func New(window fyne.Window, s *th.Session, options ...Options) *View {
 	power := container.NewVBox(container.NewGridWithColumns(4, powerAction(v.allOn, powerSlate), powerAction(v.allOff, powerTaupe), v.mainPowerTheme, v.progPowerTheme), container.NewBorder(nil, nil, v.current, poll, v.currentBar))
 	connection.Add(widget.NewSeparator())
 	connection.Add(power)
-	v.runTabs = container.NewDocTabs()
+	v.runTabs = newLocoTabs(window, func(tab *container.TabItem) string {
+		for _, panel := range v.panels {
+			if panel.tab == tab {
+				return panel.preferences.Name
+			}
+		}
+		return ""
+	}, func(tab *container.TabItem, name string) error {
+		for cab, panel := range v.panels {
+			if panel.tab == tab {
+				return s.RenameCab(cab, name)
+			}
+		}
+		return fmt.Errorf("locomotive tab no longer exists")
+	})
 	v.syncThrottles(th.State{Cab: 3, Throttles: []th.CabState{{Cab: 3, Direction: 1}}})
 	v.runTabs.OnSelected = func(tab *container.TabItem) {
 		if v.rendering {
