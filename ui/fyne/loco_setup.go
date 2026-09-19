@@ -42,7 +42,15 @@ func (t *throttlePanel) showSetup() {
 			}
 		}
 		t.modes[n] = mode
-		fields.Append(fmt.Sprintf("F%d", n), container.NewBorder(nil, nil, nil, mode, label))
+		show := widget.NewCheck("Show", nil)
+		show.SetChecked(!t.preferences.Hidden[n])
+		show.OnChanged = func(on bool) {
+			if !t.rendering {
+				t.owner.post(func(c *th.Controller) error { return c.SetFunctionHidden(cab, n, !on) })
+			}
+		}
+		t.shown[n] = show
+		fields.Append(fmt.Sprintf("F%d", n), container.NewBorder(nil, nil, show, mode, label))
 	}
 	body := container.NewBorder(container.NewVBox(widget.NewForm(widget.NewFormItem("Loco name", t.name)), widget.NewLabel("Names and labels save automatically. Maximum 80 characters.")), nil, nil, nil, container.NewVScroll(fields))
 	t.setup = dialog.NewCustom("Locomotive setup", "Done", body, t.owner.Window)

@@ -34,6 +34,9 @@ type throttlePanel struct {
 	functionGrid    *fyne.Container
 	functionColumns int
 	modes           [29]*widget.Check
+	shown           [29]*widget.Check
+	functionCells   [29]fyne.CanvasObject
+	noFunctions     *widget.Label
 }
 
 func (t *throttlePanel) post(fn func(*th.Controller) error) {
@@ -81,13 +84,16 @@ func (t *throttlePanel) build() fyne.CanvasObject {
 		lamp := canvas.NewRectangle(color.Transparent)
 		lamp.StrokeWidth = 3
 		t.lamps[n] = lamp
-		funcs = append(funcs, container.NewStack(lamp, container.NewPadded(t.functions[n])))
+		t.functionCells[n] = container.NewStack(lamp, container.NewPadded(t.functions[n]))
+		funcs = append(funcs, t.functionCells[n])
 	}
 	t.functionGrid = container.NewGridWithColumns(10, funcs...)
 	t.functionColumns = 10
+	t.noFunctions = widget.NewLabel("No function buttons shown. Use Setup… to show them.")
+	t.noFunctions.Hide()
 	t.setupButton = widget.NewButton("Setup…", t.showSetup)
 	body := container.NewVBox(container.NewBorder(nil, nil, nil, t.setupButton, widget.NewLabel("Locomotive address")), controls, t.speedLabel, t.speed, widget.NewSeparator(),
-		widget.NewLabel("Functions — hold for momentary; right-click to change mode"), t.functionGrid,
+		widget.NewLabel("Functions — hold for momentary; right-click to change mode"), t.functionGrid, t.noFunctions,
 		container.NewHBox(widget.NewButton("All Functions Off", func() { t.post(func(c *th.Controller) error { return c.AllFunctionsOff() }) })))
 	return container.NewVScroll(body)
 }
@@ -112,11 +118,18 @@ func (t *throttlePanel) render(global th.State, cab th.CabState) {
 		t.direction.Disable()
 	}
 	columns := 10
+	visible := 0
 	for n, b := range t.functions {
+		if cab.Hidden[n] {
+			t.functionCells[n].Hide()
+		} else {
+			t.functionCells[n].Show()
+			visible++
+		}
 		label := cab.Labels[n]
 		if label == "" {
 			label = fmt.Sprintf("F%d", n)
-		} else {
+		} else if !cab.Hidden[n] {
 			columns = 6
 		}
 		b.SetLabel(label, cab.Toggle[n])
@@ -127,8 +140,15 @@ func (t *throttlePanel) render(global th.State, cab th.CabState) {
 		t.lamps[n].Refresh()
 		if t.setup != nil {
 			t.modes[n].SetChecked(cab.Toggle[n])
+			t.shown[n].SetChecked(!cab.Hidden[n])
 		}
 	}
+	if visible == 0 {
+		t.noFunctions.Show()
+	} else {
+		t.noFunctions.Hide()
+	}
+	t.functionGrid.Refresh()
 	if columns != t.functionColumns {
 		t.functionColumns = columns
 		t.functionGrid.Layout = layout.NewGridLayoutWithColumns(columns)
