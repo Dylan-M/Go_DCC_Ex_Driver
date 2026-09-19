@@ -85,6 +85,10 @@ or reassigning its throttle; at least one throttle stays open. Open tabs, their
 order and the selected locomotive are saved automatically between launches.
 Reassigning an address keeps the tab in its original position.
 
+Use **Setup…** on a throttle to name its tab. Names update and save as you type;
+leave the name blank to display `Loco <address>`. Names support up to 80 Unicode
+characters and remain with the tab when its address changes.
+
 Only the tab layout is restored, never speed, direction, function states or
 track power. Connecting queries the station for each restored locomotive's
 current state; restoring tabs does not start trains or automatically connect.

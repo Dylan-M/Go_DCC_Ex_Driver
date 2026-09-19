@@ -10,6 +10,7 @@ import (
 type CabState struct {
 	Cab, Speed, Direction int
 	Functions             [29]bool
+	Name                  string
 }
 
 type cabRuntime struct {
@@ -21,7 +22,10 @@ type cabRuntime struct {
 }
 
 func (c *Controller) currentCab() cabRuntime {
-	return cabRuntime{CabState{c.state.Cab, c.state.Speed, c.state.Direction, c.state.Functions}, c.pending, c.lastSpeed, c.lastDirection, c.lastKnown, c.lastSent}
+	r := c.cabs[c.state.Cab]
+	r.state.Cab, r.state.Speed, r.state.Direction, r.state.Functions = c.state.Cab, c.state.Speed, c.state.Direction, c.state.Functions
+	r.pending, r.lastSpeed, r.lastDirection, r.lastKnown, r.lastSent = c.pending, c.lastSpeed, c.lastDirection, c.lastKnown, c.lastSent
+	return r
 }
 func (c *Controller) storeCab() { c.cabs[c.state.Cab] = c.currentCab() }
 func (c *Controller) loadCab(cab int) {
@@ -120,7 +124,7 @@ func (c *Controller) ReplaceCab(old, next int) error {
 		return errors.New("stop this locomotive before reassigning its throttle")
 	}
 	// Keep the tab's position, including when it is the only open throttle.
-	c.cabs[next] = cabRuntime{state: CabState{Cab: next, Direction: 1}}
+	c.cabs[next] = cabRuntime{state: CabState{Cab: next, Direction: 1, Name: r.state.Name}}
 	for i, address := range c.order {
 		if address == old {
 			c.order[i] = next

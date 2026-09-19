@@ -14,17 +14,21 @@ import (
 )
 
 type throttlePanel struct {
-	owner      *View
-	address    int
-	rendering  bool
-	last       th.State
-	tab        *container.TabItem
-	cab        *widget.Entry
-	direction  *DirectionSwitch
-	speed      *widget.Slider
-	speedLabel *widget.Label
-	functions  [29]*FunctionButton
-	lamps      [29]*canvas.Rectangle
+	owner       *View
+	address     int
+	rendering   bool
+	last        th.State
+	tab         *container.TabItem
+	cab         *widget.Entry
+	direction   *DirectionSwitch
+	speed       *widget.Slider
+	speedLabel  *widget.Label
+	functions   [29]*FunctionButton
+	lamps       [29]*canvas.Rectangle
+	setup       *dialog.CustomDialog
+	name        *widget.Entry
+	setupButton *widget.Button
+	preferences th.CabState
 }
 
 func (t *throttlePanel) post(fn func(*th.Controller) error) {
@@ -84,13 +88,15 @@ func (t *throttlePanel) build() fyne.CanvasObject {
 		}
 		dialog.ShowCustom("Function modes", "Done", container.NewGridWithColumns(4, checks...), t.owner.Window)
 	})
-	body := container.NewVBox(widget.NewLabel("Locomotive address"), controls, t.speedLabel, t.speed, widget.NewSeparator(),
+	t.setupButton = widget.NewButton("Setup…", t.showSetup)
+	body := container.NewVBox(container.NewBorder(nil, nil, nil, t.setupButton, widget.NewLabel("Locomotive address")), controls, t.speedLabel, t.speed, widget.NewSeparator(),
 		widget.NewLabel("Functions — hold for momentary; right-click to change mode"), container.NewGridWithColumns(10, funcs...),
 		container.NewHBox(widget.NewButton("All Functions Off", func() { t.post(func(c *th.Controller) error { return c.AllFunctionsOff() }) }), modes))
 	return container.NewVScroll(body)
 }
 
 func (t *throttlePanel) render(global th.State, cab th.CabState) {
+	t.preferences = cab
 	t.rendering = true
 	defer func() { t.rendering = false }()
 	t.speed.SetValue(float64(cab.Speed))
