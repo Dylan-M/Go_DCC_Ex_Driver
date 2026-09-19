@@ -6,7 +6,6 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/config"
-	th "github.com/Dylan-M/Go_DCC_Ex_Driver/throttle"
 )
 
 func (t *throttlePanel) showSetup() {
@@ -20,7 +19,7 @@ func (t *throttlePanel) showSetup() {
 	cab := t.address
 	t.name.OnChanged = func(name string) {
 		if t.name.Validate() == nil {
-			t.owner.post(func(c *th.Controller) error { return c.RenameCab(cab, name) })
+			t.showError(t.owner.session.RenameCab(cab, name))
 		}
 	}
 	body := container.NewVBox(widget.NewForm(widget.NewFormItem("Loco name", t.name)), widget.NewLabel("Names save automatically. Maximum 80 characters."))

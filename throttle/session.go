@@ -8,6 +8,7 @@ import (
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/dccex/transport"
 	"io"
 	"reflect"
+	"sync"
 	"time"
 )
 
@@ -30,9 +31,10 @@ func Open(ctx context.Context, o Connection) (io.ReadWriteCloser, error) {
 // Session serializes UI intents, station replies, and timers. Updates contain
 // snapshots, never live controller data. Slow views receive the latest state.
 type Session struct {
+	queueMu  sync.Mutex // serializes acceptance with Close
 	ctx      context.Context
 	cancel   context.CancelFunc
-	actions  chan func(*Controller) error
+	actions  chan sessionAction
 	updates  chan State
 	done     chan struct{}
 	opener   Opener
@@ -41,12 +43,17 @@ type Session struct {
 	current  *client.Client // owned by run
 }
 
+type sessionAction struct {
+	apply      func(*Controller) error
+	preference bool
+}
+
 func NewSession(settings config.Settings, opener Opener, save func(config.Settings) error, tabs ...TabPersistence) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 	if opener == nil {
 		opener = Open
 	}
-	s := &Session{ctx: ctx, cancel: cancel, actions: make(chan func(*Controller) error, 128), updates: make(chan State, 1), done: make(chan struct{}), opener: opener, save: save}
+	s := &Session{ctx: ctx, cancel: cancel, actions: make(chan sessionAction, 128), updates: make(chan State, 1), done: make(chan struct{}), opener: opener, save: save}
 	c := New(settings.Toggle)
 	if len(tabs) > 0 {
 		if err := c.restoreTabs(tabs[0].Initial); err != nil {
@@ -60,15 +67,33 @@ func NewSession(settings config.Settings, opener Opener, save func(config.Settin
 }
 func (s *Session) Updates() <-chan State { return s.updates }
 func (s *Session) Done() <-chan struct{} { return s.done }
-func (s *Session) Close()                { s.cancel() }
+
+// Close rejects new work immediately. Done closes after accepted local
+// preferences are saved; queued operating commands are never replayed.
+func (s *Session) Close() {
+	s.queueMu.Lock()
+	defer s.queueMu.Unlock()
+	s.cancel()
+}
 func (s *Session) Post(fn func(*Controller) error) error {
+	return s.enqueue(sessionAction{apply: fn})
+}
+
+// RenameCab queues a local preference that survives an immediate Close.
+func (s *Session) RenameCab(cab int, name string) error {
+	return s.enqueue(sessionAction{preference: true, apply: func(c *Controller) error { return c.RenameCab(cab, name) }})
+}
+
+func (s *Session) enqueue(action sessionAction) error {
+	s.queueMu.Lock()
+	defer s.queueMu.Unlock()
 	select {
 	case <-s.ctx.Done():
 		return errors.New("application is closing")
 	default:
 	}
 	select {
-	case s.actions <- fn:
+	case s.actions <- action:
 		return nil
 	default:
 		return errors.New("controller is busy; command was not queued")
@@ -130,6 +155,7 @@ func (s *Session) run(c *Controller) {
 	defer close(s.done)
 	defer close(s.updates)
 	defer c.Close()
+	defer s.flushPreferences(c)
 	speed := time.NewTicker(30 * time.Millisecond)
 	poll := time.NewTicker(time.Second)
 	defer speed.Stop()
@@ -137,6 +163,9 @@ func (s *Session) run(c *Controller) {
 	previous := c.Snapshot()
 	s.publish(previous)
 	for {
+		if s.ctx.Err() != nil {
+			return
+		}
 		var events <-chan client.Received
 		if s.current != nil {
 			events = s.current.Events()
@@ -144,24 +173,16 @@ func (s *Session) run(c *Controller) {
 		select {
 		case <-s.ctx.Done():
 			return
-		case fn := <-s.actions:
-			before := c.tabSettings()
-			if err := fn(c); err != nil {
-				c.Log("err", err.Error())
-			}
-			// Save only preference changes, not incoming broadcasts, speed ticks,
-			// power changes or disconnects. Save even if a state query failed
-			// after a valid tab change; the visible layout is still authoritative.
-			after := c.tabSettings()
-			if s.saveTabs != nil && !reflect.DeepEqual(before, after) {
-				if err := s.saveTabs(after); err != nil {
-					c.Log("err", "Could not save throttle tabs: "+err.Error())
-				}
-			}
+		case action := <-s.actions:
+			s.applyAction(c, action)
 		case now := <-speed.C:
-			c.Tick(now)
+			if s.ctx.Err() == nil {
+				c.Tick(now)
+			}
 		case <-poll.C:
-			c.Poll()
+			if s.ctx.Err() == nil {
+				c.Poll()
+			}
 		case e, ok := <-events:
 			if !ok {
 				c.Detach("Disconnected: connection closed")
@@ -183,6 +204,41 @@ func (s *Session) run(c *Controller) {
 		if !reflect.DeepEqual(next, previous) {
 			s.publish(next)
 			previous = next
+		}
+	}
+}
+
+func (s *Session) applyAction(c *Controller, action sessionAction) {
+	if s.ctx.Err() != nil {
+		if !action.preference {
+			return
+		}
+		c.Detach("Disconnected")
+	}
+	before := c.tabSettings()
+	if err := action.apply(c); err != nil {
+		c.Log("err", err.Error())
+	}
+	// Live state is never saved. A failed station query after a valid layout
+	// change must not prevent persistence of that local change.
+	after := c.tabSettings()
+	if s.saveTabs != nil && !reflect.DeepEqual(before, after) {
+		if err := s.saveTabs(after); err != nil {
+			c.Log("err", "Could not save throttle tabs: "+err.Error())
+		}
+	}
+}
+
+func (s *Session) flushPreferences(c *Controller) {
+	s.Close()
+	c.Detach("Disconnected")
+	for {
+		select {
+		case action := <-s.actions:
+			s.applyAction(c, action)
+		default:
+			s.publish(c.Snapshot())
+			return
 		}
 	}
 }
