@@ -65,3 +65,8 @@ func (c *Controller) SetFunctionLabel(cab, n int, label string) error {
 	c.cabs[cab] = r
 	return nil
 }
+
+// SetFunctionLabel queues a local edit that is flushed before session shutdown.
+func (s *Session) SetFunctionLabel(cab, n int, label string) error {
+	return s.enqueue(sessionAction{preference: true, apply: func(c *Controller) error { return c.SetFunctionLabel(cab, n, label) }})
+}

@@ -30,7 +30,7 @@ func (t *throttlePanel) showSetup() {
 		label.Validator = config.ValidateDisplayName
 		label.OnChanged = func(text string) {
 			if label.Validate() == nil {
-				t.owner.post(func(c *th.Controller) error { return c.SetFunctionLabel(cab, n, text) })
+				t.showError(t.owner.session.SetFunctionLabel(cab, n, text))
 			}
 		}
 		t.labels[n] = label

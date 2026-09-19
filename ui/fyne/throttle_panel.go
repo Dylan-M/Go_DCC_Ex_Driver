@@ -128,10 +128,7 @@ func (t *throttlePanel) render(global th.State, cab th.CabState) {
 		} else {
 			columns = 6
 		}
-		if global.Toggle[n] {
-			label += " ↕"
-		}
-		b.SetText(label)
+		b.SetLabel(label, global.Toggle[n])
 		t.lamps[n].StrokeColor = color.Transparent
 		if cab.Functions[n] {
 			t.lamps[n].StrokeColor = green

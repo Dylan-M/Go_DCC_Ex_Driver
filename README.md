@@ -91,6 +91,8 @@ characters and remain with the tab when its address changes.
 Setup also gives each F0–F28 button its own label, independently for every tab.
 Blank labels use the function number. Labels save automatically and do not
 change which decoder function a button controls.
+Long button labels are shortened with an ellipsis to keep the window usable;
+the full label remains available in Setup and to accessibility tools.
 
 You can also Ctrl-click a locomotive tab title to edit its name in place,
 without switching the active locomotive. Ordinary clicks select immediately,
