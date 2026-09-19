@@ -24,7 +24,7 @@ func (c *Controller) restoreTabs(settings config.ThrottleSettings) error {
 		if tab.Toggle != nil {
 			toggle = *tab.Toggle
 		}
-		c.cabs[tab.Address] = cabRuntime{state: CabState{Cab: tab.Address, Direction: 1, Name: tab.Name, Labels: tab.Labels, Toggle: toggle}}
+		c.cabs[tab.Address] = cabRuntime{state: CabState{Cab: tab.Address, Direction: 1, Name: tab.Name, Labels: tab.Labels, Toggle: toggle, Hidden: tab.Hidden}}
 		c.order = append(c.order, tab.Address)
 	}
 	c.loadCab(settings.Selected)
@@ -35,7 +35,7 @@ func (c *Controller) tabSettings() config.ThrottleSettings {
 	s := config.ThrottleSettings{Version: 1, Selected: c.state.Cab}
 	for _, cab := range c.cabStates() {
 		toggle := cab.Toggle
-		s.Tabs = append(s.Tabs, config.ThrottleTab{Address: cab.Cab, Name: cab.Name, Labels: cab.Labels, Toggle: &toggle})
+		s.Tabs = append(s.Tabs, config.ThrottleTab{Address: cab.Cab, Name: cab.Name, Labels: cab.Labels, Toggle: &toggle, Hidden: cab.Hidden})
 	}
 	return s
 }
@@ -92,4 +92,22 @@ func (s *Session) FlipFunctionToggle(cab, n int) error {
 		}
 		return c.WithCab(cab, func(c *Controller) error { return c.SetToggle(n, !c.state.Toggle[n]) })
 	}})
+}
+
+// SetFunctionHidden changes presentation only. Hidden functions still receive
+// station updates and participate in AllFunctionsOff.
+func (c *Controller) SetFunctionHidden(cab, n int, hidden bool) error {
+	r, ok := c.cabs[cab]
+	if !ok {
+		return errors.New("throttle has been closed")
+	}
+	if !validFunction(n) {
+		return errors.New("function must be F0-F28")
+	}
+	if hidden && r.held[n] {
+		return errors.New("release this function before hiding it")
+	}
+	r.state.Hidden[n] = hidden
+	c.cabs[cab] = r
+	return nil
 }

@@ -93,6 +93,10 @@ Blank labels use the function number. Labels save automatically and do not
 change which decoder function a button controls.
 Long button labels are shortened with an ellipsis to keep the window usable;
 the full label remains available in Setup and to accessibility tools.
+Uncheck **Show** beside an unused function to hide its button on that tab.
+Showing it again restores its label and mode. Hidden functions still track
+station state and are included in **All Functions Off**. Hiding a button does
+not turn that function off; release a held momentary button before hiding it.
 
 You can also Ctrl-click a locomotive tab title to edit its name in place,
 without switching the active locomotive. Ordinary clicks select immediately,

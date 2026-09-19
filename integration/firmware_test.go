@@ -240,6 +240,38 @@ func TestFirmwareClientFragmented(t *testing.T) {
 	c.Close()
 	f.closed(t)
 }
+
+func TestFirmwarePerLocoPreferencesAndHiddenFunctions(t *testing.T) {
+	f := startFirmware(t)
+	s := session(t, f)
+	post(t, s, func(c *throttle.Controller) error {
+		if err := c.RenameCab(3, "Freight"); err != nil {
+			return err
+		}
+		if err := c.SetFunctionLabel(3, 28, "Whistle"); err != nil {
+			return err
+		}
+		if err := c.SetToggle(28, true); err != nil {
+			return err
+		}
+		if err := c.SetFunctionHidden(3, 28, true); err != nil {
+			return err
+		}
+		return c.AddCab(7)
+	})
+	awaitState(t, s, func(v throttle.State) bool { return len(v.Throttles) == 2 && hasRX(v, "<l 7 -1 128 0>") })
+	post(t, s, func(c *throttle.Controller) error {
+		return c.WithCab(3, func(c *throttle.Controller) error { return c.Function(28, true) })
+	})
+	v := awaitState(t, s, func(v throttle.State) bool { return hasRX(v, "268435456>") })
+	if v.Throttles[0].Name != "Freight" || v.Throttles[0].Labels[28] != "Whistle" || !v.Throttles[0].Hidden[28] || !v.Throttles[0].Functions[28] || v.Throttles[1].Toggle[28] || v.Cab != 7 {
+		t.Fatal("station update changed preferences or another cab", v)
+	}
+	post(t, s, func(c *throttle.Controller) error {
+		return c.WithCab(3, func(c *throttle.Controller) error { return c.AllFunctionsOff() })
+	})
+	awaitState(t, s, func(v throttle.State) bool { return !v.Throttles[0].Functions[28] && hasRX(v, "<l 3 0 128 0>") })
+}
 func awaitState(t *testing.T, s *throttle.Session, match func(throttle.State) bool) throttle.State {
 	t.Helper()
 	timer := time.NewTimer(10 * time.Second)
