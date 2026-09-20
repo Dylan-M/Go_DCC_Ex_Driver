@@ -9,10 +9,18 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 	th "github.com/Dylan-M/Go_DCC_Ex_Driver/throttle"
 )
+
+func ctrlClickTitle(button *locoTabTitle) {
+	event := &desktop.MouseEvent{Button: desktop.MouseButtonPrimary, Modifier: fyne.KeyModifierControl}
+	button.MouseDown(event)
+	button.MouseUp(event)
+	test.Tap(button)
+}
 
 func TestInlineLocoName(t *testing.T) {
 	v, s := setupView(t)
@@ -20,7 +28,7 @@ func TestInlineLocoName(t *testing.T) {
 	v.Window.Show()
 	panel := v.panels[3]
 	h := v.runTabs.headers[panel.tab]
-	test.DoubleTap(h.title)
+	ctrlClickTitle(h.title)
 	if !h.editing || h.title.Visible() || !h.editor.Visible() || v.Window.Canvas().Focused() != h.editor || panel.setup != nil {
 		t.Fatalf("inline state editing=%v title=%v editor=%v focus=%T setup=%v mobile=%v", h.editing, h.title.Visible(), h.editor.Visible(), v.Window.Canvas().Focused(), panel.setup != nil, h.title.mobile())
 	}
@@ -49,13 +57,13 @@ func TestInlineLocoName(t *testing.T) {
 	if h.editing || panel.tab.Text != "Étoile 🚂" || !h.title.Visible() {
 		t.Fatal("submitted name not shown")
 	}
-	test.DoubleTap(h.title)
+	ctrlClickTitle(h.title)
 	h.editor.SetText("cancel me")
 	h.editor.TypedKey(&fyne.KeyEvent{Name: fyne.KeyEscape})
 	if h.editing || panel.tab.Text != "Étoile 🚂" {
 		t.Fatal("Escape did not cancel")
 	}
-	test.DoubleTap(h.title)
+	ctrlClickTitle(h.title)
 	h.editor.SetText("")
 	v.Window.Canvas().Focus(v.cab)
 	renderUntil(t, v, s, func(state th.State) bool { return state.Throttles[0].Name == "" })
@@ -67,7 +75,7 @@ func TestInlineLocoName(t *testing.T) {
 	panel.name.SetText("From Setup")
 	renderUntil(t, v, s, func(state th.State) bool { return state.Throttles[0].Name == "From Setup" })
 	panel.setup.Hide()
-	test.DoubleTap(h.title)
+	ctrlClickTitle(h.title)
 	if h.editor.Text != "From Setup" {
 		t.Fatal("inline editor did not load Setup's name")
 	}
@@ -81,13 +89,23 @@ func TestInlineNameTargetsItsOwnTab(t *testing.T) {
 	}
 	renderUntil(t, v, s, func(state th.State) bool { return len(state.Throttles) == 2 })
 	h := v.runTabs.headers[v.panels[3].tab]
-	h.title.DoubleTapped(nil)
+	ctrlClickTitle(h.title)
+	if v.runTabs.Selected() != v.panels[7].tab || v.last.Cab != 7 {
+		t.Fatal("starting a rename switched locomotives")
+	}
 	h.editor.SetText("Only three")
 	h.editor.OnSubmitted(h.editor.Text)
 	renderUntil(t, v, s, func(state th.State) bool { return state.Throttles[0].Name == "Only three" })
-	if v.last.Throttles[1].Name != "" || v.runTabs.Selected() != v.panels[3].tab {
+	if v.last.Throttles[1].Name != "" || v.runTabs.Selected() != v.panels[7].tab || v.last.Cab != 7 {
 		t.Fatal("rename affected another tab")
 	}
+	// Mobile long-hold must preserve the active locomotive too.
+	h.title.mobile = func() bool { return true }
+	h.title.TappedSecondary(nil)
+	if !h.editing || v.runTabs.Selected() != v.panels[7].tab {
+		t.Fatal("long hold did not edit without selecting")
+	}
+	h.finish(false)
 	if err := v.runTabs.rename(container.NewTabItem("gone", widget.NewLabel("")), "wrong"); err == nil {
 		t.Fatal("removed tab accepted a rename")
 	}
@@ -97,16 +115,35 @@ func TestInlineNameTargetsItsOwnTab(t *testing.T) {
 }
 
 func TestLocoTabGestures(t *testing.T) {
+	test.NewTempApp(t)
 	for _, mobile := range []bool{false, true} {
-		calls := 0
-		button := &locoTabTitle{mobile: func() bool { return mobile }, edit: func() { calls++ }}
-		button.DoubleTapped(nil)
-		if (calls == 1) == mobile {
-			t.Fatal("double-click must edit on desktop only")
+		edits, selections := 0, 0
+		button := &locoTabTitle{mobile: func() bool { return mobile }, edit: func() { edits++ }}
+		button.OnTapped = func() { selections++ }
+		button.ExtendBaseWidget(button)
+		if _, delayed := any(button).(fyne.DoubleTappable); delayed {
+			t.Fatal("tab title must not opt into delayed double-click dispatch")
+		}
+		ctrlClickTitle(button)
+		if (!mobile && (edits != 1 || selections != 0)) || (mobile && (edits != 0 || selections != 1)) {
+			t.Fatal("Ctrl-click must edit only on desktop, without selecting")
 		}
 		button.TappedSecondary(nil)
-		if calls != 1 {
+		if edits != 1 {
 			t.Fatal("mobile long hold must edit; desktop right-click must not")
+		}
+		before := selections
+		test.Tap(button)
+		if selections != before+1 || edits != 1 {
+			t.Fatal("Ctrl-click modifier leaked into the next tap")
+		}
+		// A cancelled Ctrl press must not change the next ordinary click.
+		button.MouseDown(&desktop.MouseEvent{Button: desktop.MouseButtonPrimary, Modifier: fyne.KeyModifierControl})
+		button.MouseDown(&desktop.MouseEvent{Button: desktop.MouseButtonPrimary})
+		button.MouseUp(&desktop.MouseEvent{Button: desktop.MouseButtonPrimary})
+		test.Tap(button)
+		if selections != before+2 || edits != 1 {
+			t.Fatal("ordinary click did not select synchronously")
 		}
 	}
 }

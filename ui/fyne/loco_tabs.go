@@ -167,7 +167,6 @@ func (h *locoTabHeader) begin() {
 	if !slices.Contains(h.tabs.Items, h.item) {
 		return
 	}
-	h.tabs.Select(h.item)
 	if !h.editing {
 		h.editor.SetText(h.tabs.name(h.item))
 		h.editing = true
@@ -203,9 +202,10 @@ func (h *locoTabHeader) finish(save bool) {
 
 type locoTabTitle struct {
 	widget.Button
-	edit   func()
-	mobile func() bool
-	input  func(string)
+	edit        func()
+	mobile      func() bool
+	input       func(string)
+	renameClick bool
 }
 
 func (b *locoTabTitle) noteInput(stage string) {
@@ -214,10 +214,11 @@ func (b *locoTabTitle) noteInput(stage string) {
 	}
 }
 
-// These handlers observe the first press/release without selecting the tab or
-// bypassing Fyne's existing single/double-click recognition.
+// Capture Ctrl on press, but act only on a completed click. This widget must not
+// implement fyne.DoubleTappable: that would delay every ordinary tab selection.
 func (b *locoTabTitle) MouseDown(e *desktop.MouseEvent) {
 	if e.Button == desktop.MouseButtonPrimary {
+		b.renameClick = e.Modifier&fyne.KeyModifierControl != 0
 		b.noteInput("pointer_down")
 	}
 }
@@ -229,19 +230,19 @@ func (b *locoTabTitle) MouseUp(e *desktop.MouseEvent) {
 }
 
 func (b *locoTabTitle) Tapped(e *fyne.PointEvent) {
+	rename := b.renameClick
+	b.renameClick = false
+	if rename && !b.mobile() {
+		b.noteInput("ctrl_click_dispatched")
+		b.edit()
+		return
+	}
 	b.noteInput("tap_dispatched")
 	b.Button.Tapped(e)
 }
 
-func (b *locoTabTitle) DoubleTapped(*fyne.PointEvent) {
-	if !b.mobile() {
-		b.noteInput("double_tap_dispatched")
-		b.edit()
-	}
-}
-
 // Fyne's mobile driver delivers a stationary long hold as a secondary tap.
-// Desktop right-click remains unchanged; only double-click edits there.
+// Desktop right-click remains unchanged; Ctrl-click edits there.
 func (b *locoTabTitle) TappedSecondary(*fyne.PointEvent) {
 	if b.mobile() {
 		b.noteInput("long_hold_dispatched")

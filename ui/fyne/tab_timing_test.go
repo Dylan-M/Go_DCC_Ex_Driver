@@ -35,11 +35,10 @@ func timingRecords(t *testing.T, d *tabTiming, output *bytes.Buffer) []tabTiming
 func TestTabTimingStages(t *testing.T) {
 	var output bytes.Buffer
 	now := time.Date(2026, 9, 19, 0, 0, 0, 0, time.UTC)
-	d := &tabTiming{output: &output, now: func() time.Time { return now }, delay: 500 * time.Millisecond}
+	d := &tabTiming{output: &output, now: func() time.Time { return now }}
 	d.input(7, "pointer_down")
 	now = now.Add(80 * time.Millisecond)
 	d.input(7, "pointer_up")
-	now = now.Add(500 * time.Millisecond)
 	d.input(7, "tap_dispatched")
 	s := d.span(7, false)
 	if s == nil || d.span(3, false) != nil || d.span(7, true) != nil {
@@ -68,20 +67,20 @@ func TestTabTimingStages(t *testing.T) {
 	if len(records) != 10 {
 		t.Fatal(records)
 	}
-	if records[2].ElapsedMS != 580 || records[2].SinceLastMS != 500 || records[9].ElapsedMS != 650 || records[9].SinceLastMS != 10 {
+	if records[2].ElapsedMS != 80 || records[2].SinceLastMS != 0 || records[9].ElapsedMS != 150 || records[9].SinceLastMS != 10 {
 		t.Fatal("elapsed or stage timing incorrect", records)
 	}
 	for _, record := range records {
-		if record.Event != "tab_timing" || record.ID != 1 || record.Cab != 7 || record.DoubleClickMS != 500 {
+		if record.Event != "tab_timing" || record.ID != 1 || record.Cab != 7 {
 			t.Fatal(record)
 		}
 	}
 }
 
-func TestTabTimingAbandonedAndDoubleClicks(t *testing.T) {
+func TestTabTimingAbandonedAndRenameClicks(t *testing.T) {
 	var output bytes.Buffer
 	now := time.Now()
-	d := &tabTiming{output: &output, now: func() time.Time { return now }, delay: 500 * time.Millisecond}
+	d := &tabTiming{output: &output, now: func() time.Time { return now }}
 	d.input(3, "pointer_up") // No press to correlate.
 	d.input(3, "pointer_down")
 	first := d.current
@@ -95,10 +94,13 @@ func TestTabTimingAbandonedAndDoubleClicks(t *testing.T) {
 	d.input(7, "pointer_up")
 	now = now.Add(100 * time.Millisecond)
 	d.input(7, "pointer_down")
-	if d.current.id != 2 {
-		t.Fatal("second press lost first-click timing")
+	if d.current.id != 3 {
+		t.Fatal("each press must start a separate trace")
 	}
-	d.input(7, "double_tap_dispatched")
+	d.input(7, "ctrl_click_dispatched")
+	if d.span(7, false) != nil || !d.current.done {
+		t.Fatal("rename left a selection trace active")
+	}
 	d.input(7, "tap_dispatched")
 	d.input(7, "pointer_down")
 	d.input(7, "pointer_up")
@@ -168,7 +170,7 @@ func TestTabTimingConcurrentCallbacks(t *testing.T) {
 func TestTabTimingViewIntegration(t *testing.T) {
 	v, s := setupView(t)
 	var output bytes.Buffer
-	d := &tabTiming{output: &output, now: time.Now, delay: 500 * time.Millisecond}
+	d := &tabTiming{output: &output, now: time.Now}
 	v.tabTiming, v.runTabs.timing = d, d
 	if err := s.Post(func(c *th.Controller) error { return c.AddCab(7) }); err != nil {
 		t.Fatal(err)
@@ -202,6 +204,16 @@ func TestTabTimingViewIntegration(t *testing.T) {
 	}
 	if strings.Contains(output.String(), "Locomotive") || v.runTabs.cab(nil) != 0 {
 		t.Fatal("unexpected name logging or unknown-tab identity")
+	}
+	// Editing another tab must end at rename dispatch, without focusing its cab.
+	other := v.runTabs.headers[v.panels[7].tab]
+	ctrlClickTitle(other.title)
+	other.editor.SetText("Rename without selecting")
+	other.editor.OnSubmitted(other.editor.Text)
+	renderUntil(t, v, s, func(state th.State) bool { return state.Throttles[1].Name == "Rename without selecting" })
+	records = timingRecords(t, d, &output)
+	if records[len(records)-1].Stage != "ctrl_click_dispatched" || v.last.Cab != 3 || v.runTabs.Selected() != v.panels[3].tab {
+		t.Fatal("rename selected a cab or continued selection timing", records)
 	}
 	// A failed queue must not leave a trace waiting for a nonexistent update.
 	s.Close()

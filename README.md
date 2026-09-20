@@ -89,7 +89,9 @@ Use **Setup…** on a throttle to name its tab. Names update and save as you typ
 leave the name blank to display `Loco <address>`. Names support up to 80 Unicode
 characters and remain with the tab when its address changes.
 
-You can also double-click a locomotive tab title to edit its name in place.
+You can also Ctrl-click a locomotive tab title to edit its name in place,
+without switching the active locomotive. Ordinary clicks select immediately,
+without waiting for a possible double-click.
 Press Enter or move focus away to save; Escape cancels. On Android, long-hold
 the tab title instead. Setup remains available, and function buttons keep their
 normal operating gestures.
@@ -97,10 +99,10 @@ normal operating gestures.
 For tab-switch diagnostics, set `DCCEX_DEBUG_TAB_TIMING=1` before launching and
 redirect standard error to a log file. Each desktop tab click emits JSON lines
 with a gesture ID, locomotive address, elapsed milliseconds, time since the
-previous stage, and the platform's double-click interval. Logging is off by default.
+previous stage. Logging is off by default.
 The stages cover first mouse-down, release, tap dispatch, tab layout, queued
 controller selection, controller execution, and the first matching state update
-applied to the UI. A double-click rename ends its gesture trace separately.
+applied to the UI. A Ctrl-click rename ends its gesture trace separately.
 
 `state_render_complete` means that the UI update and layout calls returned, not
 that the GPU or monitor presented the frame. Timing begins when Fyne delivers
