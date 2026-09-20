@@ -5,6 +5,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/config"
@@ -26,6 +27,8 @@ type locoTabs struct {
 	window                   fyne.Window
 	name                     func(*container.TabItem) string
 	rename                   func(*container.TabItem, string) error
+	timing                   *tabTiming
+	cab                      func(*container.TabItem) int
 }
 
 func newLocoTabs(window fyne.Window, name func(*container.TabItem) string, rename func(*container.TabItem, string) error) *locoTabs {
@@ -54,7 +57,13 @@ func (t *locoTabs) CreateRenderer() fyne.WidgetRenderer { return widget.NewSimpl
 func (t *locoTabs) Selected() *container.TabItem { return t.selected }
 
 func (t *locoTabs) Select(item *container.TabItem) {
+	var timing *tabTimingSpan
+	if t.timing != nil && t.cab != nil {
+		timing = t.timing.span(t.cab(item), false)
+	}
+	timing.mark("selection_begin")
 	if item == t.selected || !slices.Contains(t.Items, item) {
+		timing.mark("selection_unchanged")
 		return
 	}
 	old := t.selected
@@ -67,9 +76,11 @@ func (t *locoTabs) Select(item *container.TabItem) {
 	}
 	t.Refresh()
 	t.scroll.ScrollToOffset(t.headers[item].root.Position())
+	timing.mark("selection_layout_complete")
 	if t.OnSelected != nil {
 		t.OnSelected(item)
 	}
+	timing.mark("selection_callback_complete")
 }
 
 func (t *locoTabs) SetItems(items []*container.TabItem) {
@@ -129,6 +140,11 @@ func newLocoTabHeader(t *locoTabs, item *container.TabItem) *locoTabHeader {
 	h := &locoTabHeader{tabs: t, item: item}
 	h.title = &locoTabTitle{edit: h.begin, mobile: func() bool { return fyne.CurrentDevice().IsMobile() }}
 	h.title.Text = item.Text
+	h.title.input = func(stage string) {
+		if t.timing != nil && t.cab != nil {
+			t.timing.input(t.cab(item), stage)
+		}
+	}
 	h.title.OnTapped = func() { t.Select(item) }
 	h.title.ExtendBaseWidget(h.title)
 	h.editor = &locoNameEntry{finish: h.finish}
@@ -189,10 +205,37 @@ type locoTabTitle struct {
 	widget.Button
 	edit   func()
 	mobile func() bool
+	input  func(string)
+}
+
+func (b *locoTabTitle) noteInput(stage string) {
+	if b.input != nil {
+		b.input(stage)
+	}
+}
+
+// These handlers observe the first press/release without selecting the tab or
+// bypassing Fyne's existing single/double-click recognition.
+func (b *locoTabTitle) MouseDown(e *desktop.MouseEvent) {
+	if e.Button == desktop.MouseButtonPrimary {
+		b.noteInput("pointer_down")
+	}
+}
+
+func (b *locoTabTitle) MouseUp(e *desktop.MouseEvent) {
+	if e.Button == desktop.MouseButtonPrimary {
+		b.noteInput("pointer_up")
+	}
+}
+
+func (b *locoTabTitle) Tapped(e *fyne.PointEvent) {
+	b.noteInput("tap_dispatched")
+	b.Button.Tapped(e)
 }
 
 func (b *locoTabTitle) DoubleTapped(*fyne.PointEvent) {
 	if !b.mobile() {
+		b.noteInput("double_tap_dispatched")
 		b.edit()
 	}
 }
@@ -201,6 +244,7 @@ func (b *locoTabTitle) DoubleTapped(*fyne.PointEvent) {
 // Desktop right-click remains unchanged; only double-click edits there.
 func (b *locoTabTitle) TappedSecondary(*fyne.PointEvent) {
 	if b.mobile() {
+		b.noteInput("long_hold_dispatched")
 		b.edit()
 	}
 }
