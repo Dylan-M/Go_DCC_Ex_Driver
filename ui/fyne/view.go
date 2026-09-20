@@ -68,6 +68,7 @@ type View struct {
 	savedStations                            *widget.Select
 	saveStation, deleteStation               *widget.Button
 	profiles                                 []stations.Profile
+	tabTiming                                *tabTiming
 }
 
 func entry(text string) *widget.Entry { e := widget.NewEntry(); e.SetText(text); return e }
@@ -79,7 +80,7 @@ type Options struct {
 }
 
 func New(window fyne.Window, s *th.Session, options ...Options) *View {
-	v := &View{Window: window, session: s, panels: make(map[int]*throttlePanel)}
+	v := &View{Window: window, session: s, panels: make(map[int]*throttlePanel), tabTiming: tabTimingFromEnvironment()}
 	o := Options{Host: stations.DefaultHost, Port: stations.DefaultPort}
 	if len(options) > 0 {
 		o = options[0]
@@ -188,6 +189,15 @@ func New(window fyne.Window, s *th.Session, options ...Options) *View {
 		}
 		return fmt.Errorf("locomotive tab no longer exists")
 	})
+	v.runTabs.timing = v.tabTiming
+	v.runTabs.cab = func(tab *container.TabItem) int {
+		for cab, panel := range v.panels {
+			if panel.tab == tab {
+				return cab
+			}
+		}
+		return 0
+	}
 	v.syncThrottles(th.State{Cab: 3, Throttles: []th.CabState{{Cab: 3, Direction: 1}}})
 	v.runTabs.OnSelected = func(tab *container.TabItem) {
 		if v.rendering {
@@ -196,7 +206,22 @@ func New(window fyne.Window, s *th.Session, options ...Options) *View {
 		for cab, panel := range v.panels {
 			if panel.tab == tab {
 				v.throttlePanel = panel
-				v.post(func(c *th.Controller) error { return c.FocusCab(cab) })
+				timing := v.tabTiming.span(cab, false)
+				timing.mark("session_focus_queued")
+				err := v.session.Post(func(c *th.Controller) error {
+					timing.mark("session_focus_begin")
+					err := c.FocusCab(cab)
+					if err != nil {
+						timing.mark("session_focus_error")
+					} else {
+						timing.mark("session_focus_complete")
+					}
+					return err
+				})
+				if err != nil {
+					timing.mark("session_queue_error")
+				}
+				v.showError(err)
 				return
 			}
 		}
@@ -368,6 +393,9 @@ func (v *View) consoleView() fyne.CanvasObject {
 
 // Render must run on Fyne's main goroutine.
 func (v *View) Render(s th.State) {
+	timing := v.tabTiming.span(s.Cab, true)
+	timing.mark("state_render_begin")
+	defer timing.mark("state_render_complete")
 	v.rendering = true
 	defer func() { v.rendering = false }()
 	v.status.SetText(s.Status)

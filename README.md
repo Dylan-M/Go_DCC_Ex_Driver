@@ -94,6 +94,21 @@ Press Enter or move focus away to save; Escape cancels. On Android, long-hold
 the tab title instead. Setup remains available, and function buttons keep their
 normal operating gestures.
 
+For tab-switch diagnostics, set `DCCEX_DEBUG_TAB_TIMING=1` before launching and
+redirect standard error to a log file. Each desktop tab click emits JSON lines
+with a gesture ID, locomotive address, elapsed milliseconds, time since the
+previous stage, and the platform's double-click interval. Logging is off by default.
+The stages cover first mouse-down, release, tap dispatch, tab layout, queued
+controller selection, controller execution, and the first matching state update
+applied to the UI. A double-click rename ends its gesture trace separately.
+
+`state_render_complete` means that the UI update and layout calls returned, not
+that the GPU or monitor presented the frame. Timing begins when Fyne delivers
+mouse-down; it cannot include an earlier OS event-queue delay. The gap after
+controller execution includes persistence, snapshot delivery, and UI queue time.
+It does not prove that a fresh command-station reply has arrived. Diagnostic
+writes add a little overhead; avoid slow output destinations when comparing runs.
+
 Only the tab layout is restored, never speed, direction, function states or
 track power. Connecting queries the station for each restored locomotive's
 current state; restoring tabs does not start trains or automatically connect.
