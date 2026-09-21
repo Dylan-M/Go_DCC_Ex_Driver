@@ -32,8 +32,9 @@ graphics driver is required on all platforms.
 
 Packages are not publisher-signed or notarized, so Windows and macOS may display
 security warnings. Only run downloads you trust. Each release includes
-`SHA256SUMS` for checking archive integrity. Android packages are planned, but
-are not currently produced.
+`SHA256SUMS` for checking archive integrity. Android test APKs can be built from
+source or downloaded from successful Android PR checks; they are not yet part
+of tagged releases. See [Android development](ANDROID.md).
 
 ## Connect to a command station
 
@@ -186,4 +187,5 @@ Further documentation:
 - [Saved-station storage](stations/README.md)
 - [Firmware simulator and integration tests](integration/emulator/README.md)
 - [Building and publishing releases](RELEASING.md)
+- [Android builds and emulator testing](ANDROID.md)
 - [DCC-EX protocol reference](https://dcc-ex.com/reference/software/command-summary-consolidated.html)

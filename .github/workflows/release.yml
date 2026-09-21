@@ -81,13 +81,30 @@ jobs:
         with:
           go-version-file: go.mod
           architecture: ${{ matrix.goarch }}
+      - name: Cache Linux dependency downloads
+        if: runner.os == 'Linux'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: graphics-apt-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/release.yml') }}
       - name: Install Linux graphics development dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
+          mkdir -p "$RUNNER_TEMP/apt-archives/partial"
           # GLFW enables both X11 and Wayland by default on Linux.
-          sudo apt-get install -y gcc pkg-config libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev
+          sudo apt-get -o Dir::Cache::archives="$RUNNER_TEMP/apt-archives" \
+            -o APT::Keep-Downloaded-Packages=true install -y \
+            gcc pkg-config libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev
+          sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/apt-archives"
+      - name: Cache pinned Windows compiler download
+        if: runner.os == 'Windows'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/llvm-mingw-20260908-ucrt-${{ matrix.llvm }}.zip
+          key: llvm-mingw-${{ runner.os }}-${{ matrix.llvm }}-${{ matrix.sha }}
       - name: Install verified native Windows compiler
+        # Cache only the verified archive; extract fresh on every run.
         if: runner.os == 'Windows'
         shell: pwsh
         env:
@@ -97,7 +114,10 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $name = "llvm-mingw-20260908-ucrt-$env:LLVM_HOST"
           $archive = Join-Path $env:RUNNER_TEMP "$name.zip"
-          Invoke-WebRequest "https://github.com/mstorsjo/llvm-mingw/releases/download/20260908/$name.zip" -OutFile $archive
+          if (-not (Test-Path -LiteralPath $archive)) {
+            Invoke-WebRequest "https://github.com/mstorsjo/llvm-mingw/releases/download/20260908/$name.zip" -OutFile "$archive.part"
+            Move-Item -LiteralPath "$archive.part" -Destination $archive
+          }
           if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $env:LLVM_SHA256) {
             throw 'LLVM-MinGW checksum mismatch'
           }

@@ -1,2 +1,4 @@
 /dist/
 /staging/
+/.android-tools/
+/cmd/dccex-driver/dccex.apk

@@ -25,19 +25,33 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24.19.0'
+          cache: npm
+          cache-dependency-path: integration/emulator/package-lock.json
       - name: Install locked emulator dependency
         working-directory: integration/emulator
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify firmware loader
         working-directory: integration/emulator
         run: npm test
+      - name: Cache Arduino downloads and pinned firmware source
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ runner.temp }}/arduino-cli/cli.tar.gz
+            integration/emulator/.work/downloads
+            integration/emulator/.work/data/packages
+            integration/emulator/.work/CommandStation-EX
+          key: arduino-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('integration/emulator/build.cjs') }}
       - name: Install verified Arduino CLI
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/arduino-cli"
           cd "$RUNNER_TEMP/arduino-cli"
-          curl --fail --location --retry 3 -o cli.tar.gz https://github.com/arduino/arduino-cli/releases/download/v1.5.1/arduino-cli_1.5.1_Linux_64bit.tar.gz
+          if [[ ! -f cli.tar.gz ]]; then
+            curl --fail --location --retry 3 -o cli.tar.gz.part https://github.com/arduino/arduino-cli/releases/download/v1.5.1/arduino-cli_1.5.1_Linux_64bit.tar.gz
+            mv cli.tar.gz.part cli.tar.gz
+          fi
           echo '28a8e119c498a25607821c36cb2dc49e8463941b261a0d99091baa7bc692dd2b  cli.tar.gz' | sha256sum --check
           tar -xzf cli.tar.gz
           echo "$RUNNER_TEMP/arduino-cli" >> "$GITHUB_PATH"
