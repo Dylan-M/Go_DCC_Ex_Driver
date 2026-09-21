@@ -3,6 +3,7 @@
   <application android:label="DCC-EX Throttle" android:debuggable="true">
     <activity android:name="org.golang.app.GoNativeActivity"
         android:label="DCC-EX Throttle" android:exported="true"
+        android:screenOrientation="portrait"
         android:configChanges="orientation|keyboardHidden|uiMode"
         android:theme="@android:style/Theme">
       <meta-data android:name="android.app.lib_name" android:value="dccex" />

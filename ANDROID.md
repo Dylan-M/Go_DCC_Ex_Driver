@@ -2,7 +2,8 @@
 
 Android builds currently produce debug-signed APKs for testing, not Play Store
 releases. TCP is the supported connection path. Desktop serial device access
-does not implement Android USB Host permissions or drivers.
+does not implement Android USB Host permissions or drivers. The Android activity
+requests portrait orientation; landscape is not a supported mobile layout.
 
 ## Build locally
 
