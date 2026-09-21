@@ -99,9 +99,12 @@ func (v *View) reloadStations(selected string) error {
 		return err
 	}
 	v.profiles = list
-	names := make([]string, len(list))
-	for i, p := range list {
-		names[i] = p.Name
+	names := make([]string, 0, len(list))
+	for _, p := range list {
+		if v.mobile && p.Mode != "TCP" {
+			continue
+		}
+		names = append(names, p.Name)
 	}
 	// Updating the list must not silently load a profile over CLI/current fields.
 	callback := v.savedStations.OnChanged

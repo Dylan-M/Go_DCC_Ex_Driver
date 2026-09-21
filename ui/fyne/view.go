@@ -41,6 +41,7 @@ func colored(b *widget.Button, c color.Color) fyne.CanvasObject {
 
 type View struct {
 	*throttlePanel
+	mobile                      bool
 	tabs                        *container.AppTabs
 	runTabs                     *locoTabs
 	panels                      map[int]*throttlePanel
@@ -80,7 +81,11 @@ type Options struct {
 }
 
 func New(window fyne.Window, s *th.Session, options ...Options) *View {
-	v := &View{Window: window, session: s, panels: make(map[int]*throttlePanel), tabTiming: tabTimingFromEnvironment()}
+	return newView(window, s, fyne.CurrentDevice().IsMobile(), options...)
+}
+
+func newView(window fyne.Window, s *th.Session, mobile bool, options ...Options) *View {
+	v := &View{Window: window, session: s, mobile: mobile, panels: make(map[int]*throttlePanel), tabTiming: tabTimingFromEnvironment()}
 	o := Options{Host: stations.DefaultHost, Port: stations.DefaultPort}
 	if len(options) > 0 {
 		o = options[0]
@@ -113,6 +118,10 @@ func New(window fyne.Window, s *th.Session, options ...Options) *View {
 	v.devices = widget.NewSelectEntry(nil)
 	v.mode = widget.NewSelect([]string{"TCP", "Serial"}, nil)
 	v.mode.SetSelected("TCP")
+	if v.mobile {
+		v.mode.SetOptions([]string{"TCP"})
+		v.status.Wrapping = fyne.TextWrapWord
+	}
 	v.connect = widget.NewButton("Connect", func() {
 		o := th.Connection{Serial: v.mode.Selected == "Serial", Host: strings.TrimSpace(v.host.Text), Device: strings.TrimSpace(v.devices.Text)}
 		var err error
@@ -172,6 +181,14 @@ func New(window fyne.Window, s *th.Session, options ...Options) *View {
 	})
 	poll.SetChecked(true)
 	power := container.NewVBox(container.NewGridWithColumns(4, powerAction(v.allOn, powerSlate), powerAction(v.allOff, powerTaupe), v.mainPowerTheme, v.progPowerTheme), container.NewBorder(nil, nil, v.current, poll, v.currentBar))
+	if v.mobile {
+		// Native desktop serial ports are not Android USB Host devices.
+		connection = container.NewVBox(widget.NewLabel("TCP connection"),
+			widget.NewLabel("Host"), v.host, widget.NewLabel("TCP port"), v.port,
+			buttonRows(v.connect), v.status, v.stationControlsMobile())
+		power = container.NewVBox(buttonRows(powerAction(v.allOn, powerSlate), powerAction(v.allOff, powerTaupe), v.mainPowerTheme, v.progPowerTheme),
+			v.current, v.currentBar, poll)
+	}
 	connection.Add(widget.NewSeparator())
 	connection.Add(power)
 	v.runTabs = newLocoTabs(window, func(tab *container.TabItem) string {
@@ -248,6 +265,9 @@ func New(window fyne.Window, s *th.Session, options ...Options) *View {
 		}
 	}
 	run := container.NewBorder(container.NewHBox(add), nil, nil, nil, v.runTabs)
+	if v.mobile {
+		run = container.NewBorder(buttonRows(add), nil, nil, nil, v.runTabs)
+	}
 	v.tabs = container.NewAppTabs(
 		container.NewTabItem("Connection", container.NewVScroll(connection)),
 		container.NewTabItem("Run", run),
@@ -257,6 +277,9 @@ func New(window fyne.Window, s *th.Session, options ...Options) *View {
 	split.Offset = 0.72
 	window.SetContent(split)
 	window.Resize(fyne.NewSize(1050, 840))
+	if v.mobile {
+		window.Resize(fyne.NewSize(390, 780))
+	}
 	return v
 }
 func (v *View) showError(err error) {
@@ -310,6 +333,12 @@ func (v *View) programTab() fyne.CanvasObject {
 		container.NewGridWithColumns(3, readAddr, v.progAddress, writeAddr),
 		container.NewGridWithColumns(2, widget.NewForm(widget.NewFormItem("CV", cv)), widget.NewForm(widget.NewFormItem("Value", v.progValue))),
 		cvName, container.NewHBox(readCV, writeCV), v.result)
+	if v.mobile {
+		service = container.NewVBox(wrappedLabel("Programming Track — locomotive alone on PROG"),
+			widget.NewLabel("Locomotive address"), v.progAddress, buttonRows(readAddr, writeAddr),
+			widget.NewLabel("CV"), cv, widget.NewLabel("Value"), v.progValue,
+			cvName, buttonRows(readCV, writeCV), v.result)
+	}
 	labels := []string{"Reverse direction", "28/128 speed steps", "Analog (DC) mode", "RailCom", "Custom speed table", "Long address (CV17/18)"}
 	var bits []fyne.CanvasObject
 	v.cv29Label = widget.NewLabel("CV29 = --")
@@ -329,10 +358,14 @@ func (v *View) programTab() fyne.CanvasObject {
 		})
 		bits = append(bits, v.bits[n])
 	}
-	editor := container.NewVBox(widget.NewLabel("CV29 Bit Editor"), container.NewGridWithColumns(3, bits...), container.NewHBox(v.cv29Label,
-		widget.NewButton("Read CV29", func() { v.post(func(c *th.Controller) error { return c.ReadCV(29) }) }),
-		widget.NewButton("Write CV29", func() { v.post(func(c *th.Controller) error { return c.WriteCV29() }) })),
+	readCV29 := widget.NewButton("Read CV29", func() { v.post(func(c *th.Controller) error { return c.ReadCV(29) }) })
+	writeCV29 := widget.NewButton("Write CV29", func() { v.post(func(c *th.Controller) error { return c.WriteCV29() }) })
+	editor := container.NewVBox(widget.NewLabel("CV29 Bit Editor"), container.NewGridWithColumns(3, bits...), container.NewHBox(v.cv29Label, readCV29, writeCV29),
 		widget.NewLabel("Bit 5 selects the address type. Use Write Address to change an address."))
+	if v.mobile {
+		editor = container.NewVBox(widget.NewLabel("CV29 Bit Editor"), container.NewVBox(bits...), v.cv29Label,
+			buttonRows(readCV29, writeCV29), wrappedLabel("Bit 5 selects the address type. Use Write Address to change an address."))
+	}
 	pomWrite := widget.NewButton("Write on Main", func() {
 		cab, ok := v.integer(v.pomAddress, "Locomotive address")
 		if !ok {
@@ -358,6 +391,11 @@ func (v *View) programTab() fyne.CanvasObject {
 		pomHelp,
 		widget.NewForm(widget.NewFormItem("Locomotive address", v.pomAddress)),
 		container.NewGridWithColumns(2, widget.NewForm(widget.NewFormItem("CV", pomCV)), widget.NewForm(widget.NewFormItem("Value", pomValue))), pomName, pomWrite)
+	if v.mobile {
+		pom = container.NewVBox(widget.NewLabel("Program on Main"), pomHelp,
+			widget.NewLabel("Locomotive address"), v.pomAddress, widget.NewLabel("CV"), pomCV,
+			widget.NewLabel("Value"), pomValue, pomName, buttonRows(pomWrite))
+	}
 	v.programmingTabs = container.NewAppTabs(
 		container.NewTabItem("Programming Track", container.NewVScroll(container.NewVBox(service, widget.NewSeparator(), editor))),
 		container.NewTabItem("On Main", container.NewVScroll(pom)))
@@ -388,7 +426,12 @@ func (v *View) consoleView() fyne.CanvasObject {
 	raw := entry("")
 	send := func() { text := raw.Text; v.post(func(c *th.Controller) error { return c.Raw(text) }); raw.SetText("") }
 	raw.OnSubmitted = func(string) { send() }
-	return container.NewBorder(widget.NewLabel("Console"), container.NewBorder(nil, nil, widget.NewLabel("Raw:"), widget.NewButton("Send", send), raw), nil, nil, v.console)
+	sendButton := widget.NewButton("Send", send)
+	input := container.NewBorder(nil, nil, widget.NewLabel("Raw:"), sendButton, raw)
+	if v.mobile {
+		input = container.NewVBox(raw, buttonRows(sendButton))
+	}
+	return container.NewBorder(widget.NewLabel("Console"), input, nil, nil, v.console)
 }
 
 // Render must run on Fyne's main goroutine.

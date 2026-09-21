@@ -50,12 +50,24 @@ func (t *throttlePanel) showSetup() {
 			}
 		}
 		t.shown[n] = show
-		fields.Append(fmt.Sprintf("F%d", n), container.NewBorder(nil, nil, show, mode, label))
+		var row fyne.CanvasObject = container.NewBorder(nil, nil, show, mode, label)
+		if t.owner.mobile {
+			row = container.NewVBox(label, container.NewGridWithColumns(2, show, mode))
+		}
+		fields.Append(fmt.Sprintf("F%d", n), row)
 	}
-	body := container.NewBorder(container.NewVBox(widget.NewForm(widget.NewFormItem("Loco name", t.name)), widget.NewLabel("Names and labels save automatically. Maximum 80 characters.")), nil, nil, nil, container.NewVScroll(fields))
+	help := widget.NewLabel("Names and labels save automatically. Maximum 80 characters.")
+	if t.owner.mobile {
+		help.Wrapping = fyne.TextWrapWord
+	}
+	body := container.NewBorder(container.NewVBox(widget.NewForm(widget.NewFormItem("Loco name", t.name)), help), nil, nil, nil, container.NewVScroll(fields))
 	t.setup = dialog.NewCustom("Locomotive setup", "Done", body, t.owner.Window)
 	t.setup.SetOnClosed(func() { t.setup = nil })
 	t.setup.Resize(fyne.NewSize(560, 480))
+	if t.owner.mobile {
+		size := t.owner.Window.Canvas().Size()
+		t.setup.Resize(fyne.NewSize(min(560, size.Width-32), min(480, size.Height-64)))
+	}
 	t.setup.Show()
 	t.owner.Window.Canvas().Focus(t.name)
 }
