@@ -29,13 +29,19 @@ type locoTabs struct {
 	rename                   func(*container.TabItem, string) error
 	timing                   *tabTiming
 	cab                      func(*container.TabItem) int
+	wrapped                  bool
 }
 
-func newLocoTabs(window fyne.Window, name func(*container.TabItem) string, rename func(*container.TabItem, string) error) *locoTabs {
+func newLocoTabs(window fyne.Window, name func(*container.TabItem) string, rename func(*container.TabItem, string) error, mobile ...bool) *locoTabs {
 	t := &locoTabs{window: window, name: name, rename: rename, headers: make(map[*container.TabItem]*locoTabHeader)}
+	t.wrapped = len(mobile) > 0 && mobile[0]
 	t.bar = container.NewHBox()
 	t.content = container.NewStack()
 	t.scroll = container.NewHScroll(t.bar)
+	if t.wrapped {
+		t.bar = container.New(&wrappedBarLayout{})
+		t.scroll = container.NewVScroll(t.bar)
+	}
 	t.all = widget.NewButtonWithIcon("", theme.MoreHorizontalIcon(), func() {
 		items := make([]*fyne.MenuItem, 0, len(t.Items))
 		for _, item := range t.Items {
@@ -52,7 +58,12 @@ func newLocoTabs(window fyne.Window, name func(*container.TabItem) string, renam
 	return t
 }
 
-func (t *locoTabs) CreateRenderer() fyne.WidgetRenderer { return widget.NewSimpleRenderer(t.root) }
+func (t *locoTabs) CreateRenderer() fyne.WidgetRenderer {
+	if t.wrapped {
+		return &wrappedTabsRenderer{tabs: t, separator: widget.NewSeparator()}
+	}
+	return widget.NewSimpleRenderer(t.root)
+}
 
 func (t *locoTabs) Selected() *container.TabItem { return t.selected }
 
@@ -75,7 +86,11 @@ func (t *locoTabs) Select(item *container.TabItem) {
 		t.OnUnselected(old)
 	}
 	t.Refresh()
-	t.scroll.ScrollToOffset(t.headers[item].root.Position())
+	if !t.wrapped {
+		t.scroll.ScrollToOffset(t.headers[item].root.Position())
+	} else {
+		t.revealHeader(t.headers[item].root)
+	}
 	timing.mark("selection_layout_complete")
 	if t.OnSelected != nil {
 		t.OnSelected(item)
@@ -109,7 +124,12 @@ func (t *locoTabs) Refresh() {
 			h = newLocoTabHeader(t, item)
 			t.headers[item] = h
 		}
-		h.title.SetText(item.Text)
+		h.title.fullLabel = item.Text
+		text := item.Text
+		if t.wrapped {
+			text = shortFunctionLabel(text, 140, h.title.Theme().Size(theme.SizeNameText))
+		}
+		h.title.SetText(text)
 		h.title.Importance = widget.LowImportance
 		if item == t.selected {
 			h.title.Importance = widget.MediumImportance
@@ -138,7 +158,7 @@ type locoTabHeader struct {
 
 func newLocoTabHeader(t *locoTabs, item *container.TabItem) *locoTabHeader {
 	h := &locoTabHeader{tabs: t, item: item}
-	h.title = &locoTabTitle{edit: h.begin, mobile: func() bool { return fyne.CurrentDevice().IsMobile() }}
+	h.title = &locoTabTitle{edit: h.begin, mobile: func() bool { return t.wrapped || fyne.CurrentDevice().IsMobile() }}
 	h.title.Text = item.Text
 	h.title.input = func(stage string) {
 		if t.timing != nil && t.cab != nil {
@@ -206,7 +226,10 @@ type locoTabTitle struct {
 	mobile      func() bool
 	input       func(string)
 	renameClick bool
+	fullLabel   string
 }
+
+func (b *locoTabTitle) AccessibilityLabel() string { return b.fullLabel }
 
 func (b *locoTabTitle) noteInput(stage string) {
 	if b.input != nil {
