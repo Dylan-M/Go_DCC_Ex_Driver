@@ -205,7 +205,7 @@ func newView(window fyne.Window, s *th.Session, mobile bool, options ...Options)
 			}
 		}
 		return fmt.Errorf("locomotive tab no longer exists")
-	})
+	}, v.mobile)
 	v.runTabs.timing = v.tabTiming
 	v.runTabs.cab = func(tab *container.TabItem) int {
 		for cab, panel := range v.panels {
