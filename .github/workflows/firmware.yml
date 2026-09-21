@@ -1,7 +1,6 @@
 name: Real firmware integration
 on:
   pull_request:
-  push:
   workflow_dispatch:
 permissions:
   contents: read
@@ -10,7 +9,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   firmware:
-    # Keep PR validation distinct from push/manual runs. The master ruleset
+    # Keep PR validation distinct from manual runs. The master ruleset
     # requires the exact GitHub Actions check name "Firmware (pull_request)".
     name: Firmware (${{ github.event_name }})
     runs-on: ubuntu-24.04
