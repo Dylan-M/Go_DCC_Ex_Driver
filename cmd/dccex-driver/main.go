@@ -68,12 +68,7 @@ func run(args []string) error {
 			return nil
 		})
 	}
-	go func() {
-		for state := range session.Updates() {
-			s := state
-			fyne.DoAndWait(func() { view.Render(s) })
-		}
-	}()
+	a.Lifecycle().SetOnStarted(stateRenderer(session.Updates(), view.Render, fyne.DoAndWait))
 	closing := false
 	window.SetCloseIntercept(func() {
 		if closing {
