@@ -92,9 +92,20 @@ func (t *throttlePanel) build() fyne.CanvasObject {
 	t.noFunctions = widget.NewLabel("No function buttons shown. Use Setup… to show them.")
 	t.noFunctions.Hide()
 	t.setupButton = widget.NewButton("Setup…", t.showSetup)
+	allOff := widget.NewButton("All Functions Off", func() { t.post(func(c *th.Controller) error { return c.AllFunctionsOff() }) })
 	body := container.NewVBox(container.NewBorder(nil, nil, nil, t.setupButton, widget.NewLabel("Locomotive address")), controls, t.speedLabel, t.speed, widget.NewSeparator(),
 		widget.NewLabel("Functions — hold for momentary; right-click to change mode"), t.functionGrid, t.noFunctions,
-		container.NewHBox(widget.NewButton("All Functions Off", func() { t.post(func(c *th.Controller) error { return c.AllFunctionsOff() }) })))
+		container.NewHBox(allOff))
+	if t.owner.mobile {
+		t.functionColumns = 2
+		t.functionGrid.Layout = layout.NewGridLayoutWithColumns(2)
+		t.noFunctions.Wrapping = fyne.TextWrapWord
+		body = container.NewVBox(widget.NewLabel("Locomotive address"), t.cab,
+			buttonRows(selectCab, t.setupButton), t.direction,
+			buttonRows(colored(stop, orange), colored(estop, red)), t.speedLabel, t.speed,
+			widget.NewSeparator(), wrappedLabel("Functions — hold for momentary; use Setup to change mode"),
+			t.functionGrid, t.noFunctions, buttonRows(allOff))
+	}
 	return container.NewVScroll(body)
 }
 
@@ -149,6 +160,9 @@ func (t *throttlePanel) render(global th.State, cab th.CabState) {
 		t.noFunctions.Hide()
 	}
 	t.functionGrid.Refresh()
+	if t.owner.mobile {
+		columns = 2
+	}
 	if columns != t.functionColumns {
 		t.functionColumns = columns
 		t.functionGrid.Layout = layout.NewGridLayoutWithColumns(columns)
