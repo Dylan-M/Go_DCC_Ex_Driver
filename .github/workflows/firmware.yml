@@ -10,6 +10,9 @@ concurrency:
   cancel-in-progress: true
 jobs:
   firmware:
+    # Keep PR validation distinct from push/manual runs. The master ruleset
+    # requires the exact GitHub Actions check name "Firmware (pull_request)".
+    name: Firmware (${{ github.event_name }})
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -49,6 +52,8 @@ jobs:
         run: go vet -tags ci,firmware ./...
       - name: Fyne UI tests (headless test driver)
         run: go test -tags ci -count=1 -timeout=2m ./ui/fyne ./cmd/dccex-driver
+      - name: Headless startup cleanup regression
+        run: go test -race -tags ci -run '^TestHeadlessApplicationStartupUsesTabDatabase$' -count=20 -timeout=2m ./cmd/dccex-driver
       - name: Storage cross-compilation (not mobile runtime tests)
         shell: bash
         run: |
