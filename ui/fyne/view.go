@@ -278,6 +278,7 @@ func newView(window fyne.Window, s *th.Session, mobile bool, options ...Options)
 	window.SetContent(split)
 	window.Resize(fyne.NewSize(1050, 840))
 	if v.mobile {
+		window.SetContent(newMobileSurface(split))
 		window.Resize(fyne.NewSize(390, 780))
 	}
 	return v
