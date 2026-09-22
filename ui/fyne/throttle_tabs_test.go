@@ -17,7 +17,7 @@ func TestTabbedThrottles(t *testing.T) {
 	w := a.NewWindow("tabs")
 	s := th.NewSession(config.Default(), nil)
 	t.Cleanup(func() { s.Close(); <-s.Done(); w.Close() })
-	v := New(w, s)
+	v := New(w, s, Options{PowerThrottle: true})
 	if len(v.tabs.Items) != 3 || v.tabs.Items[0].Text != "Connection" || v.tabs.Items[1].Text != "Run" || v.tabs.Items[2].Text != "Programming" {
 		t.Fatal("top-level tab layout")
 	}

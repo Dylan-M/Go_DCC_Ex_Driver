@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/config"
@@ -61,32 +60,9 @@ func TestMobileLayout(t *testing.T) {
 	panel.name.SetText("Phone loco")
 	renderUntil(t, v, s, func(state th.State) bool { return state.Throttles[0].Name == "Phone loco" })
 	panel.setup.Hide()
-	// Exercise the shared CV29 callbacks through the mobile programming layout.
-	var tapCV29 func(fyne.CanvasObject)
-	tapped := 0
-	tapCV29 = func(object fyne.CanvasObject) {
-		switch o := object.(type) {
-		case *fyne.Container:
-			for _, child := range o.Objects {
-				tapCV29(child)
-			}
-		case *container.Scroll:
-			tapCV29(o.Content)
-		case *widget.Button:
-			if o.Text == "Read CV29" || o.Text == "Write CV29" {
-				test.Tap(o)
-				tapped++
-			}
-		}
+	if len(v.tabs.Items) != 2 || v.programmingTabs != nil || v.mainPower != nil {
+		t.Fatal("mobile must expose only Engineer controls")
 	}
-	tapCV29(v.programmingTabs.Items[0].Content)
-	if tapped != 2 {
-		t.Fatal("missing CV29 buttons", tapped)
-	}
-	if err := s.RenameCab(3, "After CV29"); err != nil {
-		t.Fatal(err)
-	}
-	renderUntil(t, v, s, func(state th.State) bool { return state.Throttles[0].Name == "After CV29" })
 	if path := os.Getenv("DCCEX_MOBILE_SCREENSHOT"); path != "" {
 		file, err := os.Create(path)
 		if err != nil {

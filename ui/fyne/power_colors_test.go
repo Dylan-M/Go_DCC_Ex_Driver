@@ -21,7 +21,7 @@ func TestPowerButtonPalette(t *testing.T) {
 	w := a.NewWindow("Power colors")
 	s := th.NewSession(config.Default(), nil)
 	t.Cleanup(func() { s.Close(); <-s.Done(); w.Close() })
-	v := New(w, s)
+	v := New(w, s, Options{PowerThrottle: true})
 	connection := v.tabs.Items[0].Content.(*container.Scroll).Content.(*fyne.Container)
 	power := connection.Objects[len(connection.Objects)-1].(*fyne.Container)
 	buttons := power.Objects[0].(*fyne.Container)

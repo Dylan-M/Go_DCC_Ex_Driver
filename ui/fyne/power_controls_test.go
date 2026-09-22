@@ -32,7 +32,7 @@ func TestPowerButtonsFollowStationReplies(t *testing.T) {
 	}()
 	s := th.NewSession(config.Default(), func(context.Context, th.Connection) (io.ReadWriteCloser, error) { return conn, nil })
 	t.Cleanup(func() { s.Close(); <-s.Done(); peer.Close(); <-readerDone; w.Close() })
-	v := New(w, s)
+	v := New(w, s, Options{PowerThrottle: true})
 	if !v.mainPower.Disabled() || !v.progPower.Disabled() || !v.allOn.Disabled() || !v.allOff.Disabled() {
 		t.Fatal("disconnected power controls enabled")
 	}

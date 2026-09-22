@@ -49,7 +49,7 @@ func run(args []string) error {
 	}
 	window := a.NewWindow("DCC-EX Native Throttle")
 	session := throttle.NewSession(settings, nil, tabPersistence)
-	view := fyneui.New(window, session, fyneui.Options{Host: options.Host, Port: options.Port, Stations: saved})
+	view := fyneui.New(window, session, fyneui.Options{Host: options.Host, Port: options.Port, Stations: saved, PowerThrottle: options.PowerThrottle})
 	if tabErr != nil {
 		session.Post(func(c *throttle.Controller) error {
 			c.Log("err", "Saved throttles unavailable; changes will not be saved this session: "+tabErr.Error())
