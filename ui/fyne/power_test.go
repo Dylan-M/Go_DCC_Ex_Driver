@@ -18,7 +18,7 @@ func TestPersistentPowerIndicators(t *testing.T) {
 	w := a.NewWindow("power test")
 	session := th.NewSession(config.Default(), nil)
 	t.Cleanup(func() { session.Close(); <-session.Done(); w.Close() })
-	v := New(w, session)
+	v := New(w, session, Options{PowerThrottle: true})
 	c := th.New(config.Default().Toggle)
 	if err := c.Attach(powerTestSender{}, "test"); err != nil {
 		t.Fatal(err)

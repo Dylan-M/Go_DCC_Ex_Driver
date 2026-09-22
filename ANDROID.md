@@ -6,6 +6,10 @@ publisher-authenticated builds. TCP is the supported connection path. Desktop se
 does not implement Android USB Host permissions or drivers. The Android activity
 requests portrait orientation; landscape is not a supported mobile layout.
 
+Android always uses Engineer mode: TCP connections, saved stations, all Run
+controls, and a read-only console. Track power, current monitoring, programming,
+and raw commands require desktop Power Throttle mode (`--power-throttle`).
+
 ## Build locally
 
 Install the Go version in `go.mod`, Java 21 or newer, and Bash (Git Bash on

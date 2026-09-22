@@ -10,9 +10,10 @@ import (
 )
 
 type Options struct {
-	Host        string
-	Port        int
-	AutoConnect bool
+	Host          string
+	Port          int
+	AutoConnect   bool
+	PowerThrottle bool
 }
 
 func Parse(args []string, output io.Writer) (Options, error) {
@@ -21,6 +22,7 @@ func Parse(args []string, output io.Writer) (Options, error) {
 	flags.SetOutput(output)
 	flags.StringVar(&o.Host, "host", stations.DefaultHost, "TCP hostname or IP address (attempts connection on launch)")
 	flags.IntVar(&o.Port, "port", stations.DefaultPort, "TCP port, 1-65535 (attempts connection on launch)")
+	flags.BoolVar(&o.PowerThrottle, "power-throttle", false, "enable desktop track power, programming, and raw commands (unavailable on Android)")
 	if err := flags.Parse(args); err != nil {
 		return o, err
 	}

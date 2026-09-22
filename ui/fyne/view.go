@@ -42,6 +42,7 @@ func colored(b *widget.Button, c color.Color) fyne.CanvasObject {
 type View struct {
 	*throttlePanel
 	mobile                      bool
+	powerThrottle               bool
 	tabs                        *container.AppTabs
 	runTabs                     *locoTabs
 	panels                      map[int]*throttlePanel
@@ -78,6 +79,9 @@ type Options struct {
 	Host     string
 	Port     int
 	Stations stations.Repository
+	// PowerThrottle enables administrative controls on desktop only. Mobile
+	// views always use Engineer mode, even when this option is true.
+	PowerThrottle bool
 }
 
 func New(window fyne.Window, s *th.Session, options ...Options) *View {
@@ -97,21 +101,24 @@ func newView(window fyne.Window, s *th.Session, mobile bool, options ...Options)
 		}
 	}
 	v.stationStore = o.Stations
+	v.powerThrottle = o.PowerThrottle && !mobile
 	v.status = widget.NewLabel("Disconnected")
-	v.mainPower = widget.NewButton("Main (Unknown)", func() { v.post(func(c *th.Controller) error { return c.TogglePower(p.Main) }) })
-	v.progPower = widget.NewButton("Prog (Unknown)", func() { v.post(func(c *th.Controller) error { return c.TogglePower(p.Prog) }) })
-	v.allOn = widget.NewButton("All On", func() { v.post(func(c *th.Controller) error { return c.Power(true, p.All) }) })
-	v.allOff = widget.NewButton("All Off", func() { v.post(func(c *th.Controller) error { return c.Power(false, p.All) }) })
-	v.mainPowerTheme = container.NewThemeOverride(v.mainPower, powerTheme{theme.DefaultTheme(), green})
-	v.progPowerTheme = container.NewThemeOverride(v.progPower, powerTheme{theme.DefaultTheme(), powerBlue})
-	v.renderPowerControls(th.State{})
-	v.result = widget.NewLabel("result: --")
-	v.result.Wrapping = fyne.TextWrapWord
-	v.current = canvas.NewText("current: --", theme.Color(theme.ColorNameForeground))
-	v.current.TextSize = 14
-	v.currentBar = widget.NewProgressBar()
-	v.currentBar.Min = 0
-	v.currentBar.Max = 1
+	if v.powerThrottle {
+		v.mainPower = widget.NewButton("Main (Unknown)", func() { v.post(func(c *th.Controller) error { return c.TogglePower(p.Main) }) })
+		v.progPower = widget.NewButton("Prog (Unknown)", func() { v.post(func(c *th.Controller) error { return c.TogglePower(p.Prog) }) })
+		v.allOn = widget.NewButton("All On", func() { v.post(func(c *th.Controller) error { return c.Power(true, p.All) }) })
+		v.allOff = widget.NewButton("All Off", func() { v.post(func(c *th.Controller) error { return c.Power(false, p.All) }) })
+		v.mainPowerTheme = container.NewThemeOverride(v.mainPower, powerTheme{theme.DefaultTheme(), green})
+		v.progPowerTheme = container.NewThemeOverride(v.progPower, powerTheme{theme.DefaultTheme(), powerBlue})
+		v.renderPowerControls(th.State{})
+		v.result = widget.NewLabel("result: --")
+		v.result.Wrapping = fyne.TextWrapWord
+		v.current = canvas.NewText("current: --", theme.Color(theme.ColorNameForeground))
+		v.current.TextSize = 14
+		v.currentBar = widget.NewProgressBar()
+		v.currentBar.Min = 0
+		v.currentBar.Max = 1
+	}
 	v.host = entry(o.Host)
 	v.port = entry(strconv.Itoa(o.Port))
 	v.baud = entry("115200")
@@ -174,23 +181,25 @@ func newView(window fyne.Window, s *th.Session, mobile bool, options ...Options)
 		container.NewBorder(nil, nil, widget.NewLabel("Connection"), nil, v.mode), v.connect),
 		container.NewGridWithColumns(2, widget.NewForm(widget.NewFormItem("Host", v.host), widget.NewFormItem("TCP port", v.port)), widget.NewForm(widget.NewFormItem("Serial port", v.devices), widget.NewFormItem("Baud", v.baud))),
 		container.NewHBox(refresh, v.status), v.stationControls())
-	poll := widget.NewCheck("Poll current", func(on bool) {
-		if !v.rendering {
-			v.post(func(c *th.Controller) error { c.SetPoll(on); return nil })
-		}
-	})
-	poll.SetChecked(true)
-	power := container.NewVBox(container.NewGridWithColumns(4, powerAction(v.allOn, powerSlate), powerAction(v.allOff, powerTaupe), v.mainPowerTheme, v.progPowerTheme), container.NewBorder(nil, nil, v.current, poll, v.currentBar))
 	if v.mobile {
 		// Native desktop serial ports are not Android USB Host devices.
 		connection = container.NewVBox(widget.NewLabel("TCP connection"),
 			widget.NewLabel("Host"), v.host, widget.NewLabel("TCP port"), v.port,
 			buttonRows(v.connect), v.status, v.stationControlsMobile())
-		power = container.NewVBox(buttonRows(powerAction(v.allOn, powerSlate), powerAction(v.allOff, powerTaupe), v.mainPowerTheme, v.progPowerTheme),
-			v.current, v.currentBar, poll)
 	}
-	connection.Add(widget.NewSeparator())
-	connection.Add(power)
+	// Engineer mode has no current display, so it must not poll for current.
+	v.post(func(c *th.Controller) error { c.SetPoll(v.powerThrottle); return nil })
+	if v.powerThrottle {
+		poll := widget.NewCheck("Poll current", func(on bool) {
+			if !v.rendering {
+				v.post(func(c *th.Controller) error { c.SetPoll(on); return nil })
+			}
+		})
+		poll.SetChecked(true)
+		power := container.NewVBox(container.NewGridWithColumns(4, powerAction(v.allOn, powerSlate), powerAction(v.allOff, powerTaupe), v.mainPowerTheme, v.progPowerTheme), container.NewBorder(nil, nil, v.current, poll, v.currentBar))
+		connection.Add(widget.NewSeparator())
+		connection.Add(power)
+	}
 	v.runTabs = newLocoTabs(window, func(tab *container.TabItem) string {
 		for _, panel := range v.panels {
 			if panel.tab == tab {
@@ -270,8 +279,10 @@ func newView(window fyne.Window, s *th.Session, mobile bool, options ...Options)
 	}
 	v.tabs = container.NewAppTabs(
 		container.NewTabItem("Connection", container.NewVScroll(connection)),
-		container.NewTabItem("Run", run),
-		container.NewTabItem("Programming", v.programTab()))
+		container.NewTabItem("Run", run))
+	if v.powerThrottle {
+		v.tabs.Append(container.NewTabItem("Programming", v.programTab()))
+	}
 	console := v.consoleView()
 	split := container.NewVSplit(v.tabs, console)
 	split.Offset = 0.72
@@ -334,12 +345,6 @@ func (v *View) programTab() fyne.CanvasObject {
 		container.NewGridWithColumns(3, readAddr, v.progAddress, writeAddr),
 		container.NewGridWithColumns(2, widget.NewForm(widget.NewFormItem("CV", cv)), widget.NewForm(widget.NewFormItem("Value", v.progValue))),
 		cvName, container.NewHBox(readCV, writeCV), v.result)
-	if v.mobile {
-		service = container.NewVBox(wrappedLabel("Programming Track — locomotive alone on PROG"),
-			widget.NewLabel("Locomotive address"), v.progAddress, buttonRows(readAddr, writeAddr),
-			widget.NewLabel("CV"), cv, widget.NewLabel("Value"), v.progValue,
-			cvName, buttonRows(readCV, writeCV), v.result)
-	}
 	labels := []string{"Reverse direction", "28/128 speed steps", "Analog (DC) mode", "RailCom", "Custom speed table", "Long address (CV17/18)"}
 	var bits []fyne.CanvasObject
 	v.cv29Label = widget.NewLabel("CV29 = --")
@@ -363,10 +368,6 @@ func (v *View) programTab() fyne.CanvasObject {
 	writeCV29 := widget.NewButton("Write CV29", func() { v.post(func(c *th.Controller) error { return c.WriteCV29() }) })
 	editor := container.NewVBox(widget.NewLabel("CV29 Bit Editor"), container.NewGridWithColumns(3, bits...), container.NewHBox(v.cv29Label, readCV29, writeCV29),
 		widget.NewLabel("Bit 5 selects the address type. Use Write Address to change an address."))
-	if v.mobile {
-		editor = container.NewVBox(widget.NewLabel("CV29 Bit Editor"), container.NewVBox(bits...), v.cv29Label,
-			buttonRows(readCV29, writeCV29), wrappedLabel("Bit 5 selects the address type. Use Write Address to change an address."))
-	}
 	pomWrite := widget.NewButton("Write on Main", func() {
 		cab, ok := v.integer(v.pomAddress, "Locomotive address")
 		if !ok {
@@ -392,11 +393,6 @@ func (v *View) programTab() fyne.CanvasObject {
 		pomHelp,
 		widget.NewForm(widget.NewFormItem("Locomotive address", v.pomAddress)),
 		container.NewGridWithColumns(2, widget.NewForm(widget.NewFormItem("CV", pomCV)), widget.NewForm(widget.NewFormItem("Value", pomValue))), pomName, pomWrite)
-	if v.mobile {
-		pom = container.NewVBox(widget.NewLabel("Program on Main"), pomHelp,
-			widget.NewLabel("Locomotive address"), v.pomAddress, widget.NewLabel("CV"), pomCV,
-			widget.NewLabel("Value"), pomValue, pomName, buttonRows(pomWrite))
-	}
 	v.programmingTabs = container.NewAppTabs(
 		container.NewTabItem("Programming Track", container.NewVScroll(container.NewVBox(service, widget.NewSeparator(), editor))),
 		container.NewTabItem("On Main", container.NewVScroll(pom)))
@@ -424,14 +420,14 @@ func (v *View) consoleView() fyne.CanvasObject {
 		}
 		text.Refresh()
 	})
+	if !v.powerThrottle {
+		return container.NewBorder(widget.NewLabel("Console (read-only)"), nil, nil, nil, v.console)
+	}
 	raw := entry("")
 	send := func() { text := raw.Text; v.post(func(c *th.Controller) error { return c.Raw(text) }); raw.SetText("") }
 	raw.OnSubmitted = func(string) { send() }
 	sendButton := widget.NewButton("Send", send)
 	input := container.NewBorder(nil, nil, widget.NewLabel("Raw:"), sendButton, raw)
-	if v.mobile {
-		input = container.NewVBox(raw, buttonRows(sendButton))
-	}
 	return container.NewBorder(widget.NewLabel("Console"), input, nil, nil, v.console)
 }
 
@@ -443,46 +439,50 @@ func (v *View) Render(s th.State) {
 	v.rendering = true
 	defer func() { v.rendering = false }()
 	v.status.SetText(s.Status)
-	v.renderPowerControls(s)
+	if v.powerThrottle {
+		v.renderPowerControls(s)
+	}
 	v.syncThrottles(s)
 	if s.Connected {
 		v.connect.SetText("Disconnect")
 	} else {
 		v.connect.SetText("Connect")
 	}
-	limit := s.TripMA
-	if limit == 0 {
-		limit = s.MaxMA
-	}
-	v.currentBar.Max = 1
-	v.currentBar.SetValue(0)
-	v.current.Color = theme.Color(theme.ColorNameForeground)
-	if s.Overload {
-		v.current.Text = "OVERLOAD"
-		v.current.Color = red
-		v.currentBar.SetValue(1)
-	} else if !s.HasCurrent {
-		v.current.Text = "current: --"
-	} else if limit > 0 {
-		v.current.Text = fmt.Sprintf("%d mA / %d mA trip", s.CurrentMA, limit)
-		v.currentBar.Max = float64(limit)
-		v.currentBar.SetValue(float64(s.CurrentMA))
-	} else {
-		v.current.Text = fmt.Sprintf("%d mA", s.CurrentMA)
-	}
-	v.current.Refresh()
-	v.result.SetText(s.ProgramResult)
-	if s.ProgramAddress != v.last.ProgramAddress {
-		v.progAddress.SetText(s.ProgramAddress)
-	}
-	if s.ProgramValue != v.last.ProgramValue {
-		v.progValue.SetText(s.ProgramValue)
-	}
-	if s.CV29 != v.last.CV29 || s.CV29Known != v.last.CV29Known {
-		for n, b := range v.bits {
-			b.SetChecked(s.CV29&(1<<n) != 0)
+	if v.powerThrottle {
+		limit := s.TripMA
+		if limit == 0 {
+			limit = s.MaxMA
 		}
-		v.cv29Label.SetText(fmt.Sprintf("CV29 = %d", s.CV29))
+		v.currentBar.Max = 1
+		v.currentBar.SetValue(0)
+		v.current.Color = theme.Color(theme.ColorNameForeground)
+		if s.Overload {
+			v.current.Text = "OVERLOAD"
+			v.current.Color = red
+			v.currentBar.SetValue(1)
+		} else if !s.HasCurrent {
+			v.current.Text = "current: --"
+		} else if limit > 0 {
+			v.current.Text = fmt.Sprintf("%d mA / %d mA trip", s.CurrentMA, limit)
+			v.currentBar.Max = float64(limit)
+			v.currentBar.SetValue(float64(s.CurrentMA))
+		} else {
+			v.current.Text = fmt.Sprintf("%d mA", s.CurrentMA)
+		}
+		v.current.Refresh()
+		v.result.SetText(s.ProgramResult)
+		if s.ProgramAddress != v.last.ProgramAddress {
+			v.progAddress.SetText(s.ProgramAddress)
+		}
+		if s.ProgramValue != v.last.ProgramValue {
+			v.progValue.SetText(s.ProgramValue)
+		}
+		if s.CV29 != v.last.CV29 || s.CV29Known != v.last.CV29Known {
+			for n, b := range v.bits {
+				b.SetChecked(s.CV29&(1<<n) != 0)
+			}
+			v.cv29Label.SetText(fmt.Sprintf("CV29 = %d", s.CV29))
+		}
 	}
 	if len(s.Logs) != len(v.logs) || len(s.Logs) > 0 && s.Logs[len(s.Logs)-1] != v.logs[len(v.logs)-1] {
 		v.logs = s.Logs

@@ -54,3 +54,28 @@ func TestPartialConnectionArgumentsAutoConnect(t *testing.T) {
 		}
 	}
 }
+
+func TestPowerThrottleFlag(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		args           []string
+		power, connect bool
+	}{
+		{"default Engineer", nil, false, false},
+		{"Power", []string{"--power-throttle"}, true, false},
+		{"explicit Engineer", []string{"--power-throttle=false"}, false, false},
+		{"Power with connection", []string{"--power-throttle", "--host=localhost"}, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			o, err := Parse(tc.args, &output)
+			if err != nil || o.PowerThrottle != tc.power || o.AutoConnect != tc.connect {
+				t.Fatalf("options = %+v, error = %v", o, err)
+			}
+		})
+	}
+	var output bytes.Buffer
+	if _, err := Parse([]string{"--power-throttle=invalid"}, &output); err == nil {
+		t.Fatal("invalid boolean accepted")
+	}
+}

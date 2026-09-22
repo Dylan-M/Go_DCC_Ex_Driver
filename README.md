@@ -40,6 +40,21 @@ release signing is planned before beta. See [Android development](ANDROID.md).
 
 ## Connect to a command station
 
+Desktop and Android start in **Engineer mode**: connection settings, saved
+stations, all Run controls, and a read-only diagnostic console. Track power,
+current monitoring, programming, and raw command entry are not available.
+
+On desktop, enable **Power Throttle mode** for the current launch:
+
+```bash
+dccex-driver --power-throttle
+```
+
+Combine it with `--host` and `--port` if desired. The mode flag alone does not
+connect automatically and is never saved in a station profile or the database.
+Android remains Engineer-only, regardless of startup options. This is a UI
+mode, not authentication or access control on the command station.
+
 In **Connection**, choose TCP and enter the hostname/IP and port, or choose Serial
 and select the device and baud rate. Click **Connect**. The button changes to
 **Disconnect** while connected.
@@ -68,7 +83,8 @@ locally in the application's private storage directory.
 
 ### Power and current
 
-Power controls and current draw are in **Connection**. Main is green when On and
+In desktop Power Throttle mode, power controls and current draw are in
+**Connection**. Main is green when On and
 red when Off; Prog is blue when On and orange when Off. The text in parentheses
 always describes the reported state. Unknown, mixed and overload states have
 explicit labels rather than an On/Off color.
@@ -147,7 +163,8 @@ Track power and emergency stop remain shared across throttles.
 
 ## Programming
 
-The **Programming** tab separates programming-track operations from POM.
+The **Programming** tab is available in desktop Power Throttle mode and
+separates programming-track operations from POM.
 
 - **Programming Track**: read/write locomotive addresses and CVs, or use the
   CV29 bit editor. Place only the intended locomotive on the programming track.

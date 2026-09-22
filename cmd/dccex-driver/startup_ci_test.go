@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/stations"
 )
 
@@ -19,38 +21,56 @@ func TestHeadlessApplicationStartupUsesTabDatabase(t *testing.T) {
 	// the real startup in a child process, then remove its storage only after
 	// process exit has stopped every watcher. This also isolates global app state.
 	if os.Getenv("DCCEX_STARTUP_TEST_CHILD") == "1" {
-		if err := run(nil); err != nil {
+		var args []string
+		wantTabs := 2
+		if os.Getenv("DCCEX_STARTUP_TEST_MODE") == "Power" {
+			args = []string{"--power-throttle"}
+			wantTabs = 3
+		}
+		if err := run(args); err != nil {
 			t.Fatal(err)
+		}
+		windows := fyne.CurrentApp().Driver().AllWindows()
+		if len(windows) != 1 {
+			t.Fatalf("got %d windows, want 1", len(windows))
+		}
+		tabs := windows[0].Content().(*container.Split).Leading.(*container.AppTabs)
+		if len(tabs.Items) != wantTabs {
+			t.Fatalf("startup created %d tabs, want %d", len(tabs.Items), wantTabs)
 		}
 		return
 	}
-	root := t.TempDir()
-	executable, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	child := exec.CommandContext(ctx, executable, "-test.run=^TestHeadlessApplicationStartupUsesTabDatabase$", "-test.count=1")
-	child.Env = append(os.Environ(), "DCCEX_STARTUP_TEST_CHILD=1", "TMP="+root, "TEMP="+root, "TMPDIR="+root)
-	if output, err := child.CombinedOutput(); err != nil {
-		t.Fatalf("headless startup failed: %v\n%s", err, output)
-	}
-	// Check the actual database after process exit, not just the child's status.
-	path := filepath.Join(root, "fyne-test", "com.github.Dylan-M.Go_DCC_Ex_Driver", "stations.db")
-	if _, err := os.Stat(path); err != nil {
-		t.Fatal(err)
-	}
-	db, err := stations.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := db.Close(); err != nil {
-			t.Error(err)
-		}
-	})
-	if _, err := db.LoadThrottles(); err != nil {
-		t.Fatal(err)
+	for _, mode := range []string{"Engineer", "Power"} {
+		t.Run(mode, func(t *testing.T) {
+			root := t.TempDir()
+			executable, err := os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			child := exec.CommandContext(ctx, executable, "-test.run=^TestHeadlessApplicationStartupUsesTabDatabase$", "-test.count=1")
+			child.Env = append(os.Environ(), "DCCEX_STARTUP_TEST_CHILD=1", "DCCEX_STARTUP_TEST_MODE="+mode, "TMP="+root, "TEMP="+root, "TMPDIR="+root)
+			if output, err := child.CombinedOutput(); err != nil {
+				t.Fatalf("headless startup failed: %v\n%s", err, output)
+			}
+			// Check the actual database after process exit, not just the child's status.
+			path := filepath.Join(root, "fyne-test", "com.github.Dylan-M.Go_DCC_Ex_Driver", "stations.db")
+			if _, err := os.Stat(path); err != nil {
+				t.Fatal(err)
+			}
+			db, err := stations.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := db.Close(); err != nil {
+					t.Error(err)
+				}
+			})
+			if _, err := db.LoadThrottles(); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
