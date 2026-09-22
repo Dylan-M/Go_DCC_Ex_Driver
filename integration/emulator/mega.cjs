@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const assert = require('node:assert/strict');
 const avr = require('avr8js');
+const { createUSART } = require('./usart.cjs');
 
 function readHex(file) {
   const flash = new Uint8Array(256 * 1024).fill(0xff);
@@ -53,7 +54,7 @@ function createMega(file, onByte) {
     ...avr.timer2Config, compAInterrupt: 26, compBInterrupt: 28, ovfInterrupt: 30,
     compPortA: 0x25, compPinA: 4, compPortB: 0x102, compPinB: 6,
   });
-  const serial = new avr.AVRUSART(cpu, {
+  const serial = createUSART(cpu, {
     ...avr.usart0Config, rxCompleteInterrupt: 50, dataRegisterEmptyInterrupt: 52,
     txCompleteInterrupt: 54,
   }, frequency);

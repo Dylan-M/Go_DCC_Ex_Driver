@@ -36,6 +36,14 @@ STANDARD_MOTOR_SHIELD configuration with Wi-Fi and Ethernet disabled. Build
 provenance records the source commit, tool versions, configuration hash and HEX
 hash. AVR8js 0.21.1 is integrity-locked in `package-lock.json`.
 
+`usart.cjs` corrects a receive-flag defect in that AVR8js version: changing
+transmit interrupt enables can clear RXC while an unread input byte is pending.
+The wrapper preserves the receive flag and interrupt while RX remains enabled;
+the original USART still handles byte timing and register reads. Peripheral
+regression tests cover transmit interrupts, receive interrupt masking, and
+delivery through the Mega receive vector. DCC-EX firmware is not patched, and
+the adapter does not retry rejected commands or fabricate successful replies.
+
 `DCCEX_LOG_DIR` can name an absolute directory for persistent JSONL UART logs;
 otherwise each test uses a temporary directory and prints its transcript on
 failure. `DCCEX_FIRMWARE` optionally selects another absolute HEX path for local
