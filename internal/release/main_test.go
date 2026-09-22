@@ -27,8 +27,58 @@ func TestVersionTags(t *testing.T) {
 			t.Fatal("invalid version accepted", tag)
 		}
 	}
-	if _, err := assetName("v1.2.3", "android-arm64"); err == nil {
+	if _, err := assetName("v1.2.3", "android-386"); err == nil {
 		t.Fatal("unsupported platform accepted")
+	}
+}
+
+func TestAndroidAlphaReleasePolicy(t *testing.T) {
+	for tag, want := range map[string]bool{
+		"v0.0.1-alpha.1": true, "v1.0.0-alpha": true,
+		"v1.0.0-beta.1": false, "v1.0.0-rc.1": false, "v1.0.0": false,
+		"v1.0.0-not-alpha.1": false, "v1.0.0-alphabet.1": false,
+	} {
+		if androidAlpha(tag) != want {
+			t.Fatal("incorrect Android publication policy", tag)
+		}
+		if err := run([]string{"validate", tag}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tag := "v0.0.1-alpha.3"
+	name, err := assetName(tag, "android-arm64")
+	if err != nil || name != "Go_DCC_Ex_Driver-v0.0.1-alpha.3-android-arm64-debug.apk" {
+		t.Fatal(name, err)
+	}
+	dir := t.TempDir()
+	for _, target := range targets {
+		file, err := assetName(tag, target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, file), []byte(target), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if checksums(tag, dir) == nil {
+		t.Fatal("alpha release accepted without Android APK")
+	}
+	apk := []byte("APK test fixture")
+	if err := os.WriteFile(filepath.Join(dir, name), apk, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := checksums(tag, dir); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := os.ReadFile(filepath.Join(dir, "SHA256SUMS"))
+	if err != nil || !strings.Contains(string(manifest), fmt.Sprintf("%x  %s\n", sha256.Sum256(apk), name)) || strings.Count(string(manifest), "\n") != 7 {
+		t.Fatal("missing APK checksum", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if checksums(tag, dir) == nil {
+		t.Fatal("empty Android APK accepted")
 	}
 }
 

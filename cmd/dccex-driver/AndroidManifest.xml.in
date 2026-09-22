@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.github.dylanm.go_dccex_driver" android:versionCode="1" android:versionName="0.0.1">
+    package="com.github.dylanm.go_dccex_driver" android:versionCode="@VERSION_CODE@" android:versionName="@VERSION_NAME@">
   <application android:label="DCC-EX Throttle" android:debuggable="true">
     <activity android:name="org.golang.app.GoNativeActivity"
         android:label="DCC-EX Throttle" android:exported="true"

@@ -1,7 +1,8 @@
 # Android development
 
-Android builds currently produce debug-signed APKs for testing, not Play Store
-releases. TCP is the supported connection path. Desktop serial device access
+Android builds currently produce debug-signed APKs for testing, including ARM64
+APKs attached to GitHub alpha releases. These are not Play Store releases or
+publisher-authenticated builds. TCP is the supported connection path. Desktop serial device access
 does not implement Android USB Host permissions or drivers. The Android activity
 requests portrait orientation; landscape is not a supported mobile layout.
 
@@ -20,6 +21,13 @@ bash scripts/build-android.sh arm64
 bash scripts/build-android.sh amd64
 ```
 
+For versioned testing, pass a tag as the second build argument, for example
+`ANDROID_VERSION_CODE=3 bash scripts/build-android.sh arm64 v0.0.1-alpha.3`.
+The generated manifest records the complete version name, including the alpha
+suffix. The version code must be between 1 and 2,100,000,000; release CI uses its
+workflow run number. Build scripts verify the APK signature, version metadata,
+and CPU architecture. Edit `AndroidManifest.xml.in`, not the generated XML.
+
 On Linux, choose writable absolute paths such as `$HOME/android-sdk` and
 `$HOME/android-tools/bin`. Ensure Go and Java are on PATH. Setup downloads
 Google's command-line tools with a checked SHA-256, installs the pinned SDK/NDK,
@@ -36,7 +44,14 @@ saved stations and throttles use private app storage.
 
 Fyne's pinned debug packager currently targets Android API 29 even though the
 build uses SDK 36. Store targeting requirements, release signing, and AAB
-publishing are separate work. Do not use these debug packages for publication.
+publishing are separate work. Do not submit these debug packages to an app store.
+Proper private-key signing is planned before beta. The current workflow publishes
+Android APKs only for `-alpha` and `-alpha.*` tags, never beta, RC, or stable tags.
+Until that signing change lands, those other tags produce desktop assets only.
+Debug signatures do not authenticate the publisher; SHA256SUMS checks integrity,
+not publisher identity. Switching to the future release key may require
+uninstalling the test app and losing its private settings; export/backup support
+is not yet provided.
 
 ## Android Emulator
 
@@ -66,7 +81,10 @@ Closing the Android app must not turn off track power.
 ## CI and caches
 
 `Android build` runs on pull requests or manual dispatch, never branch pushes.
-It builds both architectures and retains test APKs for seven days. This is an
+It builds both architectures and retains test APKs for seven days. The separate
+release workflow also builds the ARM64 APK and includes it in alpha releases and
+their checksum manifest. Release publication waits for the Android build along
+with all six desktop builds. This is an
 actual application build, not the existing storage-only cross-compilation check.
 It does not claim emulator runtime or physical-device validation.
 
