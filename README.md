@@ -24,6 +24,7 @@ Choose the package matching your operating system and processor:
 | Windows | x64 (`amd64`), ARM64 | ZIP containing `dccex-driver.exe` |
 | macOS | Intel (`amd64`), Apple Silicon (`arm64`) | ZIP containing `Go_DCC_Ex_Driver.app` |
 | Linux | x64 (`amd64`), ARM64 | tar.gz containing `dccex-driver` |
+| Android alpha testing | ARM64 | Debug-signed APK for sideloading |
 
 Extract the archive before launching. On macOS, move the app to Applications if
 desired. On Linux, run `./dccex-driver`; packages are built on Ubuntu 24.04 and
@@ -32,9 +33,10 @@ graphics driver is required on all platforms.
 
 Packages are not publisher-signed or notarized, so Windows and macOS may display
 security warnings. Only run downloads you trust. Each release includes
-`SHA256SUMS` for checking archive integrity. Android test APKs can be built from
-source or downloaded from successful Android PR checks; they are not yet part
-of tagged releases. See [Android development](ANDROID.md).
+`SHA256SUMS` for checking archive integrity. Alpha releases include an Android
+ARM64 APK marked `debug`; it is for testing only, not publisher-authenticated.
+Android APKs are also available from successful Android PR checks. Proper
+release signing is planned before beta. See [Android development](ANDROID.md).
 
 ## Connect to a command station
 

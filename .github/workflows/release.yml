@@ -1,4 +1,4 @@
-name: Desktop releases
+name: Releases
 
 on:
   push:
@@ -7,6 +7,9 @@ on:
     paths:
       - '.github/workflows/release.yml'
       - 'internal/release/**'
+      - 'scripts/*android*'
+      - 'cmd/dccex-driver/AndroidManifest.xml.in'
+      - 'internal/androidicon/**'
   workflow_dispatch:
     inputs:
       version:
@@ -29,6 +32,7 @@ jobs:
     outputs:
       tag: ${{ steps.version.outputs.tag }}
       prerelease: ${{ steps.version.outputs.prerelease }}
+      android_alpha: ${{ steps.version.outputs.android_alpha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -153,9 +157,60 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  android:
+    needs: validate
+    # Debug APKs belong only to alpha releases. PR/manual runs rehearse the build.
+    if: github.event_name != 'push' || needs.validate.outputs.android_alpha == 'true'
+    name: Build Android ARM64 debug APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      ANDROID_HOME: ${{ github.workspace }}/.android-tools/sdk
+      ANDROID_TOOLS_BIN: ${{ github.workspace }}/.android-tools/bin
+      ANDROID_VERSION_CODE: ${{ github.run_number }}
+      RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Restore pinned Android and Fyne tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .android-tools
+          key: android-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/android-versions.env', 'go.mod', 'scripts/setup-android.sh') }}
+      - name: Verify and install missing tools
+        run: bash scripts/setup-android.sh
+      - name: Build and verify versioned APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/build-android.sh arm64 "$RELEASE_TAG"
+          mkdir -p staging/android
+          cp dist/android/dccex-arm64.apk "staging/android/Go_DCC_Ex_Driver-$RELEASE_TAG-android-arm64-debug.apk"
+      - name: Retain Android package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-android-arm64
+          path: staging/android/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
   publish:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [validate, build]
+    # Allow the intentional Android skip for non-alpha tags, but never a failed build.
+    if: >-
+      !cancelled() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') &&
+      needs.validate.result == 'success' && needs.build.result == 'success' &&
+      (needs.android.result == 'success' ||
+       (needs.validate.outputs.android_alpha != 'true' && needs.android.result == 'skipped'))
+    needs: [validate, build, android]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -178,6 +233,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.validate.outputs.tag }}
           PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+          ANDROID_ALPHA: ${{ needs.validate.outputs.android_alpha }}
         run: |
           set -euo pipefail
           go run ./internal/release checksums "$RELEASE_TAG" dist
@@ -189,6 +245,9 @@ jobs:
           else
             options=()
             if [[ "$PRERELEASE" == true ]]; then options+=(--prerelease); fi
+            if [[ "$ANDROID_ALPHA" == true ]]; then
+              options+=(--notes 'The Android ARM64 APK is debug-signed for alpha testing only. It is not publisher-authenticated or suitable for production. Proper release signing is planned before beta.')
+            fi
             gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_TAG" \
               --generate-notes "${options[@]}"
           fi

@@ -1,4 +1,4 @@
-// Command release validates version tags and packages native desktop builds.
+// Command release validates tags, packages desktop builds, and hashes release assets.
 // It has no GUI dependencies and never creates tags or publishes releases.
 package main
 
@@ -22,6 +22,12 @@ import (
 var versionTag = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-([0-9A-Za-z-]+)(\.[0-9A-Za-z-]+)*)?$`)
 var targets = []string{"windows-amd64", "windows-arm64", "macos-amd64", "macos-arm64", "linux-amd64", "linux-arm64"}
 
+// Android debug APKs are published only during the alpha testing phase.
+func androidAlpha(tag string) bool {
+	_, suffix, _ := strings.Cut(tag, "-")
+	return suffix == "alpha" || strings.HasPrefix(suffix, "alpha.")
+}
+
 func parseTag(tag string) (version string, prerelease bool, err error) {
 	if !versionTag.MatchString(tag) {
 		return "", false, fmt.Errorf("expected vMAJOR.MINOR.PATCH or a prerelease tag, got %q", tag)
@@ -40,6 +46,9 @@ func parseTag(tag string) (version string, prerelease bool, err error) {
 func assetName(tag, target string) (string, error) {
 	if _, _, err := parseTag(tag); err != nil {
 		return "", err
+	}
+	if target == "android-arm64" {
+		return "Go_DCC_Ex_Driver-" + tag + "-android-arm64-debug.apk", nil
 	}
 	for _, supported := range targets {
 		if target == supported {
@@ -209,7 +218,11 @@ func packageBinary(tag, target, binaryPath, output string) error {
 
 func checksums(tag, dir string) error {
 	var lines strings.Builder
-	for _, target := range targets {
+	required := append([]string(nil), targets...)
+	if androidAlpha(tag) {
+		required = append(required, "android-arm64")
+	}
+	for _, target := range required {
 		name, err := assetName(tag, target)
 		if err != nil {
 			return err
@@ -232,7 +245,7 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("version=%s\nprerelease=%t\n", version, pre)
+		fmt.Printf("version=%s\nprerelease=%t\nandroid_alpha=%t\n", version, pre, androidAlpha(args[1]))
 		return nil
 	}
 	if len(args) == 5 && args[0] == "package" {

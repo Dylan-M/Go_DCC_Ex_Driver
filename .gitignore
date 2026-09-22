@@ -2,3 +2,4 @@
 /staging/
 /.android-tools/
 /cmd/dccex-driver/dccex.apk
+/cmd/dccex-driver/AndroidManifest.xml
