@@ -3,13 +3,8 @@ name: Releases
 on:
   push:
     tags: ['v*']
+  # Select builds inside the workflow so the merge gate always reports.
   pull_request:
-    paths:
-      - '.github/workflows/release.yml'
-      - 'internal/release/**'
-      - 'scripts/*android*'
-      - 'cmd/dccex-driver/AndroidManifest.xml.in'
-      - 'internal/androidicon/**'
   workflow_dispatch:
     inputs:
       version:
@@ -26,7 +21,46 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  changes:
+    name: Select release builds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      required: ${{ steps.select.outputs.required }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.19.0'
+      - name: Test build selection and merge gate
+        run: node --test .github/scripts/release-policy.test.cjs
+      - name: Apply release path filters
+        id: select
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" != pull_request ]]; then
+            echo 'required=true' >> "$GITHUB_OUTPUT"
+          else
+            git diff --no-renames --name-only -z "$BASE_SHA...$HEAD_SHA" > "$RUNNER_TEMP/release-changes"
+            node -e '
+              const fs = require("node:fs");
+              const { requiresReleaseBuild } = require("./.github/scripts/release-policy.cjs");
+              const paths = fs.readFileSync(process.argv[1], "utf8").split("\0").filter(Boolean);
+              console.log("required=" + requiresReleaseBuild(paths));
+            ' "$RUNNER_TEMP/release-changes" >> "$GITHUB_OUTPUT"
+          fi
+
   validate:
+    needs: changes
+    if: needs.changes.outputs.required == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -202,6 +236,24 @@ jobs:
           path: staging/android/*.apk
           if-no-files-found: error
           retention-days: 7
+
+  release_checks:
+    name: Release builds (${{ github.event_name }})
+    if: always() && github.event_name == 'pull_request'
+    needs: [changes, validate, build, android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.19.0'
+      - name: Require every selected build to succeed
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: node -e 'require("./.github/scripts/release-policy.cjs").checkReleaseResults(JSON.parse(process.env.CI_NEEDS))'
 
   publish:
     # Allow the intentional Android skip for non-alpha tags, but never a failed build.
