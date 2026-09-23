@@ -1,4 +1,4 @@
-name: Releases
+name: Platform builds and releases
 
 on:
   push:
@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   changes:
-    name: Select release builds
+    name: Select platform builds
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -59,6 +59,7 @@ jobs:
           fi
 
   validate:
+    name: Release version and test validation
     needs: changes
     if: needs.changes.outputs.required == 'true'
     runs-on: ubuntu-24.04
@@ -87,115 +88,81 @@ jobs:
       - name: Static checks
         run: go vet -tags ci ./...
 
-  build:
+  windows_amd64:
+    name: Windows x64 package
     needs: validate
-    name: Build ${{ matrix.target }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 35
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {runner: windows-2022, target: windows-amd64, goos: windows, goarch: amd64, llvm: x86_64, sha: 1bcf74d06b724aeecaa6412ca85f5b26fb1da770e7cdcefa9263c9c5c3ad34b6}
-          - {runner: windows-11-arm, target: windows-arm64, goos: windows, goarch: arm64, llvm: aarch64, sha: 7fe35f60407473c420ac72b25137f54385b0affd2c42efd507c0062fc626ab56}
-          - {runner: macos-15-intel, target: macos-amd64, goos: darwin, goarch: amd64}
-          - {runner: macos-15, target: macos-arm64, goos: darwin, goarch: arm64}
-          - {runner: ubuntu-24.04, target: linux-amd64, goos: linux, goarch: amd64}
-          - {runner: ubuntu-24.04-arm, target: linux-arm64, goos: linux, goarch: arm64}
-    defaults:
-      run:
-        shell: bash
-    env:
-      CGO_ENABLED: '1'
-      GOOS: ${{ matrix.goos }}
-      GOARCH: ${{ matrix.goarch }}
-      RELEASE_TAG: ${{ needs.validate.outputs.tag }}
-      RELEASE_TARGET: ${{ matrix.target }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          architecture: ${{ matrix.goarch }}
-      - name: Cache Linux dependency downloads
-        if: runner.os == 'Linux'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ runner.temp }}/apt-archives
-          key: graphics-apt-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/release.yml') }}
-      - name: Install Linux graphics development dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          mkdir -p "$RUNNER_TEMP/apt-archives/partial"
-          # GLFW enables both X11 and Wayland by default on Linux.
-          sudo apt-get -o Dir::Cache::archives="$RUNNER_TEMP/apt-archives" \
-            -o APT::Keep-Downloaded-Packages=true install -y \
-            gcc pkg-config libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev
-          sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/apt-archives"
-      - name: Cache pinned Windows compiler download
-        if: runner.os == 'Windows'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ runner.temp }}/llvm-mingw-20260908-ucrt-${{ matrix.llvm }}.zip
-          key: llvm-mingw-${{ runner.os }}-${{ matrix.llvm }}-${{ matrix.sha }}
-      - name: Install verified native Windows compiler
-        # Cache only the verified archive; extract fresh on every run.
-        if: runner.os == 'Windows'
-        shell: pwsh
-        env:
-          LLVM_HOST: ${{ matrix.llvm }}
-          LLVM_SHA256: ${{ matrix.sha }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $name = "llvm-mingw-20260908-ucrt-$env:LLVM_HOST"
-          $archive = Join-Path $env:RUNNER_TEMP "$name.zip"
-          if (-not (Test-Path -LiteralPath $archive)) {
-            Invoke-WebRequest "https://github.com/mstorsjo/llvm-mingw/releases/download/20260908/$name.zip" -OutFile "$archive.part"
-            Move-Item -LiteralPath "$archive.part" -Destination $archive
-          }
-          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $env:LLVM_SHA256) {
-            throw 'LLVM-MinGW checksum mismatch'
-          }
-          Expand-Archive -LiteralPath $archive -DestinationPath $env:RUNNER_TEMP
-          $bin = Join-Path $env:RUNNER_TEMP "$name/bin"
-          $bin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          "CC=$bin/$env:LLVM_HOST-w64-mingw32-clang.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "CXX=$bin/$env:LLVM_HOST-w64-mingw32-clang++.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-      - name: Test on target architecture
-        run: go test -tags ci -timeout=3m ./...
-      - name: Build native release executable
-        run: |
-          set -euo pipefail
-          mkdir -p staging
-          binary=staging/dccex-driver
-          flags='-s -w'
-          if [[ "$GOOS" == windows ]]; then
-            binary+=.exe
-            flags+=' -H=windowsgui -extldflags=-static'
-          fi
-          go build -trimpath -tags release -ldflags "$flags" -o "$binary" ./cmd/dccex-driver
-          "$binary" --help
-          if [[ "$GOOS" == darwin ]]; then
-            codesign --force --sign - "$binary"
-            codesign --verify "$binary"
-          fi
-          go run ./internal/release package "$RELEASE_TAG" "$RELEASE_TARGET" "$binary" dist
-      - name: Retain release package
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: release-${{ matrix.target }}
-          path: dist/*
-          if-no-files-found: error
-          retention-days: 7
+    uses: ./.github/workflows/desktop-package.yml
+    with:
+      runner: windows-2022
+      target: windows-amd64
+      goos: windows
+      goarch: amd64
+      llvm: x86_64
+      sha: 1bcf74d06b724aeecaa6412ca85f5b26fb1da770e7cdcefa9263c9c5c3ad34b6
+      tag: ${{ needs.validate.outputs.tag }}
+
+  windows_arm64:
+    name: Windows ARM64 package
+    needs: validate
+    uses: ./.github/workflows/desktop-package.yml
+    with:
+      runner: windows-11-arm
+      target: windows-arm64
+      goos: windows
+      goarch: arm64
+      llvm: aarch64
+      sha: 7fe35f60407473c420ac72b25137f54385b0affd2c42efd507c0062fc626ab56
+      tag: ${{ needs.validate.outputs.tag }}
+
+  macos_amd64:
+    name: macOS Intel package
+    needs: validate
+    uses: ./.github/workflows/desktop-package.yml
+    with:
+      runner: macos-15-intel
+      target: macos-amd64
+      goos: darwin
+      goarch: amd64
+      tag: ${{ needs.validate.outputs.tag }}
+
+  macos_arm64:
+    name: macOS Apple Silicon package
+    needs: validate
+    uses: ./.github/workflows/desktop-package.yml
+    with:
+      runner: macos-15
+      target: macos-arm64
+      goos: darwin
+      goarch: arm64
+      tag: ${{ needs.validate.outputs.tag }}
+
+  linux_amd64:
+    name: Linux x64 package
+    needs: validate
+    uses: ./.github/workflows/desktop-package.yml
+    with:
+      runner: ubuntu-24.04
+      target: linux-amd64
+      goos: linux
+      goarch: amd64
+      tag: ${{ needs.validate.outputs.tag }}
+
+  linux_arm64:
+    name: Linux ARM64 package
+    needs: validate
+    uses: ./.github/workflows/desktop-package.yml
+    with:
+      runner: ubuntu-24.04-arm
+      target: linux-arm64
+      goos: linux
+      goarch: arm64
+      tag: ${{ needs.validate.outputs.tag }}
 
   android:
     needs: validate
     # Debug APKs belong only to alpha releases. PR/manual runs rehearse the build.
     if: github.event_name != 'push' || needs.validate.outputs.android_alpha == 'true'
-    name: Build Android ARM64 debug APK
+    name: Android ARM64 release package (debug-signed)
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
@@ -238,9 +205,9 @@ jobs:
           retention-days: 7
 
   release_checks:
-    name: Release builds (${{ github.event_name }})
+    name: Platform build results (${{ github.event_name }})
     if: always() && github.event_name == 'pull_request'
-    needs: [changes, validate, build, android]
+    needs: [changes, validate, windows_amd64, windows_arm64, macos_amd64, macos_arm64, linux_amd64, linux_arm64, android]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -253,16 +220,23 @@ jobs:
       - name: Require every selected build to succeed
         env:
           CI_NEEDS: ${{ toJSON(needs) }}
-        run: node -e 'require("./.github/scripts/release-policy.cjs").checkReleaseResults(JSON.parse(process.env.CI_NEEDS))'
+        run: node -e 'require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, require("./.github/scripts/release-policy.cjs").reportReleaseResults(JSON.parse(process.env.CI_NEEDS)))'
 
   publish:
+    name: Publish tagged GitHub release
     # Allow the intentional Android skip for non-alpha tags, but never a failed build.
     if: >-
       !cancelled() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') &&
-      needs.validate.result == 'success' && needs.build.result == 'success' &&
+      needs.validate.result == 'success' &&
+      needs.windows_amd64.result == 'success' &&
+      needs.windows_arm64.result == 'success' &&
+      needs.macos_amd64.result == 'success' &&
+      needs.macos_arm64.result == 'success' &&
+      needs.linux_amd64.result == 'success' &&
+      needs.linux_arm64.result == 'success' &&
       (needs.android.result == 'success' ||
        (needs.validate.outputs.android_alpha != 'true' && needs.android.result == 'skipped'))
-    needs: [validate, build, android]
+    needs: [validate, windows_amd64, windows_arm64, macos_amd64, macos_arm64, linux_amd64, linux_arm64, android]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

@@ -1,4 +1,4 @@
-name: Real firmware integration
+name: Command-station integration tests
 on:
   pull_request:
   workflow_dispatch:
@@ -9,9 +9,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   firmware:
-    # Keep PR validation distinct from manual runs. The master ruleset
-    # requires the exact GitHub Actions check name "Firmware (pull_request)".
-    name: Firmware (${{ github.event_name }})
+    name: Command-station integration tests (${{ github.event_name }})
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -30,7 +28,7 @@ jobs:
       - name: Install locked emulator dependency
         working-directory: integration/emulator
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Verify firmware loader
+      - name: Test simulator UART and firmware loading
         working-directory: integration/emulator
         run: npm test
       - name: Cache Arduino downloads and pinned firmware source
@@ -57,23 +55,10 @@ jobs:
           echo "$RUNNER_TEMP/arduino-cli" >> "$GITHUB_PATH"
       - name: Build pinned production firmware
         run: node integration/emulator/build.cjs
-      - name: Core and firmware tests (race detector enabled)
+      - name: Test app communication with real DCC-EX firmware
         env:
           DCCEX_LOG_DIR: ${{ github.workspace }}/integration/emulator/.work/logs
-        run: go test -race -tags firmware -count=1 -timeout=3m ./dccex/... ./throttle ./config ./stations ./startup ./integration
-      - name: Static checks
-        run: go vet -tags ci,firmware ./...
-      - name: Fyne UI tests (headless test driver)
-        run: go test -tags ci -count=1 -timeout=2m ./ui/fyne ./cmd/dccex-driver
-      - name: Headless startup cleanup regression
-        run: go test -race -tags ci -run '^TestHeadlessApplicationStartupUsesTabDatabase$' -count=20 -timeout=2m ./cmd/dccex-driver
-      - name: Storage cross-compilation (not mobile runtime tests)
-        shell: bash
-        run: |
-          set -euo pipefail
-          for target in windows/amd64 darwin/arm64 linux/amd64 android/arm64 ios/arm64; do
-            GOOS="${target%/*}" GOARCH="${target#*/}" CGO_ENABLED=0 go build ./stations ./startup
-          done
+        run: go test -race -tags firmware -count=1 -timeout=3m ./integration
       - name: Retain diagnostics (not firmware binaries)
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

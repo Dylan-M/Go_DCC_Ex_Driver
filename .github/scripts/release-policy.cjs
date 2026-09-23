@@ -1,14 +1,20 @@
 // Keep release build selection separate from its always-reporting merge gate.
-const optionalJobs = ['validate', 'build', 'android'];
+const jobNames = {
+  validate: 'Release version and test validation',
+  windows_amd64: 'Windows x64 package', windows_arm64: 'Windows ARM64 package',
+  macos_amd64: 'macOS Intel package', macos_arm64: 'macOS Apple Silicon package',
+  linux_amd64: 'Linux x64 package', linux_arm64: 'Linux ARM64 package',
+  android: 'Android ARM64 release package (debug-signed)',
+};
+const optionalJobs = Object.keys(jobNames);
+
+// Only these known documentation files can skip platform builds. New source,
+// dependencies, assets, build scripts, and unknown paths select builds by default.
+const documentation = new Set(['README.md', 'ANDROID.md', 'RELEASING.md',
+  '.github/CI.md', 'stations/README.md', 'integration/emulator/README.md']);
 
 function requiresReleaseBuild(paths) {
-  return paths.some(path =>
-    path === '.github/workflows/release.yml' ||
-    path.startsWith('.github/scripts/release-policy.') ||
-    path.startsWith('internal/release/') ||
-    /^scripts\/[^/]*android[^/]*$/.test(path) ||
-    path === 'cmd/dccex-driver/AndroidManifest.xml.in' ||
-    path.startsWith('internal/androidicon/'));
+  return paths.some(path => !documentation.has(path));
 }
 
 function checkReleaseResults(needs) {
@@ -29,4 +35,14 @@ function checkReleaseResults(needs) {
   }
 }
 
-module.exports = { requiresReleaseBuild, checkReleaseResults };
+function reportReleaseResults(needs) {
+  checkReleaseResults(needs);
+  const selected = needs.changes.outputs.required === 'true';
+  const heading = selected
+    ? 'All selected platform builds passed.'
+    : 'Platform builds were not required: known documentation-only changes or an empty diff.';
+  const rows = optionalJobs.map(job => `- ${jobNames[job]}: ${needs[job].result}`);
+  return `## Platform build results\n\n${heading}\n\n${rows.join('\n')}\n`;
+}
+
+module.exports = { requiresReleaseBuild, checkReleaseResults, reportReleaseResults };

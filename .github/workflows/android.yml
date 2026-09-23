@@ -1,4 +1,4 @@
-name: Android build
+name: Android phone and emulator builds
 on:
   pull_request:
   workflow_dispatch:
@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   android:
-    name: Android APK (${{ github.event_name }})
+    name: Android phone and emulator builds (${{ github.event_name }})
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:

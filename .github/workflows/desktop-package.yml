@@ -1,0 +1,123 @@
+name: Build one desktop package
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        type: string
+        required: true
+      target:
+        type: string
+        required: true
+      goos:
+        type: string
+        required: true
+      goarch:
+        type: string
+        required: true
+      llvm:
+        type: string
+        required: false
+      sha:
+        type: string
+        required: false
+      tag:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build and test
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: bash
+    env:
+      CGO_ENABLED: '1'
+      GOOS: ${{ inputs.goos }}
+      GOARCH: ${{ inputs.goarch }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_TARGET: ${{ inputs.target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          architecture: ${{ inputs.goarch }}
+      - name: Cache Linux dependency downloads
+        if: runner.os == 'Linux'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: graphics-apt-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/desktop-package.yml') }}
+      - name: Install Linux graphics development dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          mkdir -p "$RUNNER_TEMP/apt-archives/partial"
+          # GLFW enables both X11 and Wayland by default on Linux.
+          sudo apt-get -o Dir::Cache::archives="$RUNNER_TEMP/apt-archives" \
+            -o APT::Keep-Downloaded-Packages=true install -y \
+            gcc pkg-config libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev
+          sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/apt-archives"
+      - name: Cache pinned Windows compiler download
+        if: runner.os == 'Windows'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/llvm-mingw-20260908-ucrt-${{ inputs.llvm }}.zip
+          key: llvm-mingw-${{ runner.os }}-${{ inputs.llvm }}-${{ inputs.sha }}
+      - name: Install verified native Windows compiler
+        # Cache only the verified archive; extract fresh on every run.
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          LLVM_HOST: ${{ inputs.llvm }}
+          LLVM_SHA256: ${{ inputs.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $name = "llvm-mingw-20260908-ucrt-$env:LLVM_HOST"
+          $archive = Join-Path $env:RUNNER_TEMP "$name.zip"
+          if (-not (Test-Path -LiteralPath $archive)) {
+            Invoke-WebRequest "https://github.com/mstorsjo/llvm-mingw/releases/download/20260908/$name.zip" -OutFile "$archive.part"
+            Move-Item -LiteralPath "$archive.part" -Destination $archive
+          }
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $env:LLVM_SHA256) {
+            throw 'LLVM-MinGW checksum mismatch'
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath $env:RUNNER_TEMP
+          $bin = Join-Path $env:RUNNER_TEMP "$name/bin"
+          $bin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "CC=$bin/$env:LLVM_HOST-w64-mingw32-clang.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "CXX=$bin/$env:LLVM_HOST-w64-mingw32-clang++.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Test on target architecture
+        run: go test -tags ci -timeout=3m ./...
+      - name: Build native release executable
+        run: |
+          set -euo pipefail
+          mkdir -p staging
+          binary=staging/dccex-driver
+          flags='-s -w'
+          if [[ "$GOOS" == windows ]]; then
+            binary+=.exe
+            flags+=' -H=windowsgui -extldflags=-static'
+          fi
+          go build -trimpath -tags release -ldflags "$flags" -o "$binary" ./cmd/dccex-driver
+          "$binary" --help
+          if [[ "$GOOS" == darwin ]]; then
+            codesign --force --sign - "$binary"
+            codesign --verify "$binary"
+          fi
+          go run ./internal/release package "$RELEASE_TAG" "$RELEASE_TARGET" "$binary" dist
+      - name: Retain release package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-${{ inputs.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
