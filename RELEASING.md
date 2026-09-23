@@ -1,6 +1,6 @@
 # Releases
 
-The **Releases** workflow builds native x64 and ARM64 packages for Windows,
+The **Platform builds and releases** workflow builds native x64 and ARM64 packages for Windows,
 macOS and Linux. Alpha tags also produce a debug-signed Android ARM64 APK for
 testing. Proper Android release signing is planned before beta; until then,
 beta, RC, and stable tags publish desktop packages only.
@@ -27,16 +27,21 @@ before checksums and assets are uploaded to a
 draft release and then published. Only the final job has repository write access.
 
 Normal branch pushes do not publish releases. Adding the workflow does not create
-a tag or release. Firmware integration tests run on pull requests or manual
+a tag or release. Command-station integration tests run on pull requests or manual
 dispatch, not tag pushes.
 
 ## Rehearse without publishing
 
-Use **Actions → Releases → Run workflow** with a version such as
-`v0.0.0-ci.1`. This runs the same build matrix and retains downloadable workflow
+Use **Actions → Platform builds and releases → Run workflow** with a version such as
+`v0.0.0-ci.1`. This runs the same platform jobs and retains downloadable workflow
 artifacts for seven days, but does not create a tag or GitHub release. Relevant
 pull requests also run build-only checks. These runs consume GitHub Actions
 minutes, including macOS and Windows runner time.
+
+Application, dependency, asset, and workflow changes select all platform jobs.
+Only known documentation-only changes (or an empty diff) skip them. The
+**Platform build results** check reports which jobs ran and which were skipped;
+see [PR check responsibilities and selection](.github/CI.md).
 
 ## Packages and toolchains
 
