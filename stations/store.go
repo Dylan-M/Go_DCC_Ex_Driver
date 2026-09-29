@@ -1,9 +1,11 @@
 package stations
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Dylan-M/Go_DCC_Ex_Driver/telemetry"
 	"os"
 	"path/filepath"
 	"sort"
@@ -18,11 +20,20 @@ var ErrNotFound = errors.New("saved station not found")
 var records = []byte("stations")
 var metadata = []byte("metadata")
 
-type Store struct{ db *bolt.DB }
+type Store struct {
+	db        *bolt.DB
+	telemetry *telemetry.Manager
+}
 
 // The caller supplies its platform's app-private storage directory. No desktop
 // home-directory assumption or Fyne dependency exists in this layer.
-func Open(path string) (*Store, error) {
+func Open(path string, observers ...*telemetry.Manager) (store *Store, openErr error) {
+	var observer *telemetry.Manager
+	if len(observers) > 0 {
+		observer = observers[0]
+	}
+	_, finish := observer.Start(context.Background(), "storage.open")
+	defer func() { finish(openErr) }()
 	if path == "" {
 		return nil, errors.New("station database path is empty")
 	}
@@ -57,12 +68,18 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	return &Store{db}, nil
+	return &Store{db: db, telemetry: observer}, nil
 }
 
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close() (err error) {
+	_, finish := s.telemetry.Start(context.Background(), "storage.close")
+	defer func() { finish(err) }()
+	return s.db.Close()
+}
 
-func (s *Store) List() ([]Profile, error) {
+func (s *Store) List() (result []Profile, resultErr error) {
+	_, finish := s.telemetry.Start(context.Background(), "storage.stations.list")
+	defer func() { finish(resultErr) }()
 	profiles := []Profile{}
 	err := s.db.View(func(tx *bolt.Tx) error {
 		return tx.Bucket(records).ForEach(func(key, value []byte) error {
@@ -88,7 +105,9 @@ func (s *Store) List() ([]Profile, error) {
 	return profiles, nil
 }
 
-func (s *Store) Save(p Profile, replace bool) error {
+func (s *Store) Save(p Profile, replace bool) (resultErr error) {
+	_, finish := s.telemetry.Start(context.Background(), "storage.stations.save")
+	defer func() { finish(resultErr) }()
 	p, err := Normalize(p)
 	if err != nil {
 		return err
@@ -107,7 +126,9 @@ func (s *Store) Save(p Profile, replace bool) error {
 	})
 }
 
-func (s *Store) Delete(name string) error {
+func (s *Store) Delete(name string) (resultErr error) {
+	_, finish := s.telemetry.Start(context.Background(), "storage.stations.delete")
+	defer func() { finish(resultErr) }()
 	return s.db.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket(records)
 		key := []byte(strings.ToLower(strings.TrimSpace(name)))

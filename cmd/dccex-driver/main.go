@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -9,12 +10,14 @@ import (
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/config"
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/startup"
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/stations"
+	"github.com/Dylan-M/Go_DCC_Ex_Driver/telemetry"
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/throttle"
 	fyneui "github.com/Dylan-M/Go_DCC_Ex_Driver/ui/fyne"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -32,7 +35,14 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	a := app.NewWithID("com.github.Dylan-M.Go_DCC_Ex_Driver")
+	return runApplication(options, app.NewWithID("com.github.Dylan-M.Go_DCC_Ex_Driver"))
+}
+
+func runApplication(options startup.Options, a fyne.App) error {
+	observer := telemetry.New(a.Metadata().Version)
+	defer observer.Close()
+	var saveTelemetry func(config.TelemetrySettings) error
+	var telemetryErr error
 	settings := config.Default()
 	var tabErr error
 	tabPersistence := throttle.TabPersistence{Initial: config.DefaultThrottles()}
@@ -40,16 +50,31 @@ func run(args []string) error {
 	dbPath, dbErr := stationDatabasePath(a.Storage().RootURI())
 	if dbErr == nil {
 		var db *stations.Store
-		db, dbErr = stations.Open(dbPath)
+		db, dbErr = stations.Open(dbPath, observer)
 		if dbErr == nil {
 			saved = db
 			defer db.Close()
 			tabPersistence, tabErr = loadTabPersistence(db)
+			var savedTelemetry config.TelemetrySettings
+			savedTelemetry, telemetryErr = db.LoadTelemetry()
+			if telemetryErr == nil {
+				saveTelemetry = db.SaveTelemetry
+				telemetryErr = observer.Configure(savedTelemetry, nil)
+			}
 		}
 	}
 	window := a.NewWindow("DCC-EX Native Throttle")
-	session := throttle.NewSession(settings, nil, tabPersistence)
-	view := fyneui.New(window, session, fyneui.Options{Host: options.Host, Port: options.Port, Stations: saved, PowerThrottle: options.PowerThrottle})
+	observer.Event(context.Background(), "application.started")
+	defer observer.Event(context.Background(), "application.stopped")
+	session := throttle.NewObservedSession(settings, nil, observer, tabPersistence)
+	view := fyneui.New(window, session, fyneui.Options{Host: options.Host, Port: options.Port, Stations: saved, PowerThrottle: options.PowerThrottle, Telemetry: observer, SaveTelemetry: saveTelemetry})
+	defer view.Close()
+	if telemetryErr != nil {
+		session.Post(func(c *throttle.Controller) error {
+			c.Log("err", "Telemetry settings unavailable; export disabled: "+telemetryErr.Error())
+			return nil
+		})
+	}
 	if tabErr != nil {
 		session.Post(func(c *throttle.Controller) error {
 			c.Log("err", "Saved throttles unavailable; changes will not be saved this session: "+tabErr.Error())
@@ -69,12 +94,24 @@ func run(args []string) error {
 		})
 	}
 	a.Lifecycle().SetOnStarted(stateRenderer(session.Updates(), view.Render, fyne.DoAndWait))
+	a.Lifecycle().SetOnEnteredForeground(func() { observer.Event(context.Background(), "application.foreground") })
+	a.Lifecycle().SetOnExitedForeground(func() {
+		observer.Event(context.Background(), "application.background")
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			// Export failures are counted by the telemetry transport. They do not
+			// affect the connection or need an interrupting UI dialog.
+			_ = observer.Flush(ctx)
+		}()
+	})
 	closing := false
 	window.SetCloseIntercept(func() {
 		if closing {
 			return
 		}
 		closing = true
+		view.Close()
 		session.Close()
 		go func() { <-session.Done(); fyne.Do(func() { window.SetCloseIntercept(nil); window.Close() }) }()
 	})

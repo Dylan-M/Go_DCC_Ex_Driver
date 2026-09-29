@@ -3,9 +3,13 @@
 package throttle
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	p "github.com/Dylan-M/Go_DCC_Ex_Driver/dccex/protocol"
+	"github.com/Dylan-M/Go_DCC_Ex_Driver/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	olog "go.opentelemetry.io/otel/log"
 	"strings"
 	"time"
 )
@@ -34,6 +38,9 @@ type State struct {
 	Logs                                        []LogEntry
 }
 type Controller struct {
+	telemetry                *telemetry.Manager
+	operationContext         context.Context
+	pendingContext           context.Context
 	cabs                     map[int]cabRuntime
 	order                    []int
 	state                    State
@@ -57,6 +64,18 @@ func (c *Controller) Snapshot() State {
 	return s
 }
 func (c *Controller) Log(kind, text string) {
+	ctx := c.operationContext
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	switch kind {
+	case "tx", "rx": // Raw traffic is emitted once by the client, at debug only.
+	case "err":
+		c.telemetry.Log(ctx, olog.SeverityError, "Controller operation failed")
+		c.telemetry.Log(ctx, olog.SeverityDebug, telemetry.Redact(text))
+	default:
+		c.telemetry.Log(ctx, olog.SeverityInfo, telemetry.Redact(text))
+	}
 	if len(text) > 8192 {
 		text = text[:8192] + "…"
 	}
@@ -121,7 +140,11 @@ func (c *Controller) Close() error {
 	c.Detach("Disconnected")
 	return nil
 }
-func (c *Controller) send(cmd string, quiet bool) error {
+func (c *Controller) send(cmd string, quiet bool) (resultErr error) {
+	// The parent action owns its target. A command can address another loco or
+	// the whole station, so the selected tab is not a reliable command attribute.
+	ctx, finish := c.telemetry.Start(c.operationContext, "command."+telemetry.CommandKind(cmd))
+	defer func() { finish(resultErr) }()
 	if c.sender == nil {
 		err := errors.New("not connected")
 		if !quiet {
@@ -129,7 +152,15 @@ func (c *Controller) send(cmd string, quiet bool) error {
 		}
 		return err
 	}
-	if err := c.sender.Send(cmd); err != nil {
+	var err error
+	if contextual, ok := c.sender.(interface {
+		SendContext(context.Context, string) error
+	}); ok {
+		err = contextual.SendContext(ctx, cmd)
+	} else {
+		err = c.sender.Send(cmd)
+	}
+	if err != nil {
 		c.Detach("Send failed: " + err.Error())
 		c.Log("err", c.state.Status)
 		return err
@@ -173,7 +204,9 @@ func (c *Controller) selectCab(cab int, preservePending bool) error {
 	}
 	return nil
 }
-func (c *Controller) MoveSpeed(speed int) error {
+func (c *Controller) MoveSpeed(speed int) (resultErr error) {
+	finish := c.operation("speed", attribute.Int("speed", speed))
+	defer func() { finish(resultErr) }()
 	if _, err := p.EncodeThrottle(c.state.Cab, speed, c.state.Direction); err != nil {
 		return err
 	}
@@ -184,6 +217,7 @@ func (c *Controller) MoveSpeed(speed int) error {
 	if c.sender != nil {
 		v := speed
 		c.pending = &v
+		c.pendingContext = c.operationContext
 	} else {
 		c.pending = nil
 	}
@@ -216,6 +250,9 @@ func (c *Controller) tickCurrent(now time.Time) error {
 		return nil
 	}
 	c.pending = nil
+	previousContext := c.operationContext
+	c.operationContext = c.pendingContext
+	defer func() { c.operationContext = previousContext; c.pendingContext = nil }()
 	return c.transmit(speed, c.state.Direction, now)
 }
 func (c *Controller) Direction(now time.Time) error {
@@ -224,7 +261,9 @@ func (c *Controller) Direction(now time.Time) error {
 
 // Explicit selection must not invert direction when a stale UI event is queued,
 // or resend a command when the already-selected direction is tapped.
-func (c *Controller) SetDirection(dir int, now time.Time) error {
+func (c *Controller) SetDirection(dir int, now time.Time) (resultErr error) {
+	finish := c.operation("direction", attribute.Int("direction", dir))
+	defer func() { finish(resultErr) }()
 	if dir != 0 && dir != 1 {
 		return errors.New("direction must be 0 (reverse) or 1 (forward)")
 	}
@@ -237,7 +276,9 @@ func (c *Controller) SetDirection(dir int, now time.Time) error {
 	c.state.Direction = dir
 	return nil
 }
-func (c *Controller) Stop(now time.Time) error {
+func (c *Controller) Stop(now time.Time) (resultErr error) {
+	finish := c.operation("stop")
+	defer func() { finish(resultErr) }()
 	c.pending = nil
 	if err := c.transmit(0, c.state.Direction, now); err != nil {
 		return err
@@ -245,7 +286,9 @@ func (c *Controller) Stop(now time.Time) error {
 	c.state.Speed = 0
 	return nil
 }
-func (c *Controller) Emergency() error {
+func (c *Controller) Emergency() (resultErr error) {
+	finish := c.operation("emergency_stop")
+	defer func() { finish(resultErr) }()
 	c.pending = nil
 	// Never replay another throttle's queued movement after a stop attempt,
 	// even if the emergency command itself fails to reach the station.
@@ -275,16 +318,24 @@ func (c *Controller) Poll() error {
 	}
 	return nil
 }
-func (c *Controller) Power(on bool, track p.Track) error { return c.command(p.EncodePower(on, track)) }
-func validFunction(n int) bool                           { return n >= 0 && n < 29 }
-func (c *Controller) SetToggle(n int, on bool) error {
+func (c *Controller) Power(on bool, track p.Track) (resultErr error) {
+	finish := c.operation("power", attribute.Bool("on", on), attribute.String("track", string(track)))
+	defer func() { finish(resultErr) }()
+	return c.command(p.EncodePower(on, track))
+}
+func validFunction(n int) bool { return n >= 0 && n < 29 }
+func (c *Controller) SetToggle(n int, on bool) (resultErr error) {
+	finish := c.operation("function_mode", attribute.Int("function", n), attribute.Bool("toggle", on))
+	defer func() { finish(resultErr) }()
 	if !validFunction(n) {
 		return errors.New("function must be F0-F28")
 	}
 	c.state.Toggle[n] = on
 	return nil
 }
-func (c *Controller) Function(n int, pressed bool) error {
+func (c *Controller) Function(n int, pressed bool) (resultErr error) {
+	finish := c.operation("function", attribute.Int("function", n), attribute.Bool("pressed", pressed))
+	defer func() { finish(resultErr) }()
 	if !validFunction(n) {
 		return errors.New("function must be F0-F28")
 	}
@@ -313,7 +364,9 @@ func (c *Controller) Function(n int, pressed bool) error {
 	}
 	return nil
 }
-func (c *Controller) AllFunctionsOff() error {
+func (c *Controller) AllFunctionsOff() (resultErr error) {
+	finish := c.operation("functions_off")
+	defer func() { finish(resultErr) }()
 	for n, on := range c.state.Functions {
 		if on {
 			if err := c.command(p.EncodeFunction(c.state.Cab, n, 0)); err != nil {
@@ -324,40 +377,52 @@ func (c *Controller) AllFunctionsOff() error {
 	}
 	return nil
 }
-func (c *Controller) ReadAddress() error {
+func (c *Controller) ReadAddress() (resultErr error) {
+	finish := c.operation("address_read")
+	defer func() { finish(resultErr) }()
 	if err := c.send(p.EncodeReadAddress(), false); err != nil {
 		return err
 	}
 	c.state.ProgramResult = "reading address..."
 	return nil
 }
-func (c *Controller) WriteAddress(address int) error {
+func (c *Controller) WriteAddress(address int) (resultErr error) {
+	finish := c.operation("address_write", attribute.Int("address", address))
+	defer func() { finish(resultErr) }()
 	if err := c.command(p.EncodeWriteAddress(address)); err != nil {
 		return err
 	}
 	c.state.ProgramResult = "writing address..."
 	return nil
 }
-func (c *Controller) ReadCV(cv int) error {
+func (c *Controller) ReadCV(cv int) (resultErr error) {
+	finish := c.operation("cv_read", attribute.Int("cv", cv))
+	defer func() { finish(resultErr) }()
 	if err := c.command(p.EncodeReadCV(cv)); err != nil {
 		return err
 	}
 	c.state.ProgramResult = "reading " + CVDescription(cv) + "..."
 	return nil
 }
-func (c *Controller) WriteCV(cv, value int) error {
+func (c *Controller) WriteCV(cv, value int) (resultErr error) {
+	finish := c.operation("cv_write", attribute.Int("cv", cv), attribute.Int("value", value))
+	defer func() { finish(resultErr) }()
 	if err := c.command(p.EncodeWriteCV(cv, value)); err != nil {
 		return err
 	}
 	c.state.ProgramResult = "writing " + CVDescription(cv) + "..."
 	return nil
 }
-func (c *Controller) POM(cab, cv, value int) error {
+func (c *Controller) POM(cab, cv, value int) (resultErr error) {
+	finish := c.operation("pom", attribute.Int("loco.address", cab), attribute.Int("cv", cv), attribute.Int("value", value))
+	defer func() { finish(resultErr) }()
 	return c.command(p.EncodeProgramOnMain(cab, cv, value))
 }
 func (c *Controller) EditCV29(low byte) { c.state.CV29 = c.state.CV29&0xc0 | low&0x3f }
 func (c *Controller) WriteCV29() error  { return c.WriteCV(29, int(c.state.CV29)) }
-func (c *Controller) Raw(text string) error {
+func (c *Controller) Raw(text string) (resultErr error) {
+	finish := c.operation("raw")
+	defer func() { finish(resultErr) }()
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil
@@ -371,6 +436,8 @@ func (c *Controller) Receive(e p.Event) {
 	if e == nil || !c.state.Connected {
 		return
 	}
+	ctx, finish := c.telemetry.Start(c.operationContext, "controller.receive", attribute.String("command", telemetry.CommandKind(e.RawFrame())))
+	defer finish(nil)
 	_, current := e.(p.CurrentInfo)
 	if !current || !c.state.Poll {
 		c.Log("rx", "<< "+e.RawFrame())
@@ -385,6 +452,7 @@ func (c *Controller) Receive(e p.Event) {
 		}
 		c.receiveLoco(v)
 	case p.TrackPower:
+		c.telemetry.Event(ctx, "track.power", attribute.String("track", v.Track), attribute.String("state", string(v.State)))
 		c.state.Power = fmt.Sprintf("power: %s %s", v.Track, v.State)
 		c.receivePower(v)
 	case p.TrackMode:
@@ -394,6 +462,7 @@ func (c *Controller) Receive(e p.Event) {
 			c.updateTrackPower()
 		}
 	case p.CurrentInfo:
+		c.telemetry.Current(v.CurrentMA)
 		c.state.CurrentMA = v.CurrentMA
 		c.state.HasCurrent = true
 		if v.HasLimits {
@@ -404,6 +473,7 @@ func (c *Controller) Receive(e p.Event) {
 	case p.VersionInfo:
 		c.state.Status = v.Text
 	case p.CVResult:
+		c.telemetry.Event(ctx, "programming.cv_result", attribute.String("operation", string(v.Operation)), attribute.Int("cv", v.CV), attribute.Bool("success", v.Success()))
 		desc := CVDescription(v.CV)
 		if !v.Success() {
 			c.state.ProgramResult = desc + " " + string(v.Operation) + " FAILED"
@@ -420,6 +490,7 @@ func (c *Controller) Receive(e p.Event) {
 			c.state.CV29Known = true
 		}
 	case p.AddressResult:
+		c.telemetry.Event(ctx, "programming.address_result", attribute.String("operation", string(v.Operation)), attribute.Bool("success", v.Success()))
 		if !v.Success() {
 			c.state.ProgramResult = "address " + string(v.Operation) + " FAILED"
 			return

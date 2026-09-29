@@ -2,6 +2,8 @@ package stations
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/config"
 	bolt "go.etcd.io/bbolt"
@@ -11,7 +13,9 @@ import (
 // Values use the config codecs; no live command-station state is stored here.
 var preferences = []byte("preferences")
 
-func (s *Store) readPreference(key string, decode func([]byte) error) error {
+func (s *Store) readPreference(key string, decode func([]byte) error) (err error) {
+	_, finish := s.telemetry.Start(context.Background(), "storage.preferences.read")
+	defer func() { finish(err) }()
 	return s.db.View(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket(preferences)
 		if bucket == nil {
@@ -24,7 +28,9 @@ func (s *Store) readPreference(key string, decode func([]byte) error) error {
 	})
 }
 
-func (s *Store) writePreference(key string, data []byte) error {
+func (s *Store) writePreference(key string, data []byte) (err error) {
+	_, finish := s.telemetry.Start(context.Background(), "storage.preferences.write")
+	defer func() { finish(err) }()
 	return s.db.Update(func(tx *bolt.Tx) error {
 		bucket, err := tx.CreateBucketIfNotExists(preferences)
 		if err != nil {
@@ -68,4 +74,31 @@ func (s *Store) SaveSettings(settings config.Settings) error {
 		return err
 	}
 	return s.writePreference("function-modes", data.Bytes())
+}
+
+func (s *Store) LoadTelemetry() (config.TelemetrySettings, error) {
+	settings := config.DefaultTelemetry()
+	err := s.readPreference("telemetry", func(data []byte) error {
+		var decoded config.TelemetrySettings
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			return err
+		}
+		settings = decoded
+		return settings.Validate()
+	})
+	if err != nil {
+		return config.DefaultTelemetry(), err
+	}
+	return settings, nil
+}
+
+func (s *Store) SaveTelemetry(settings config.TelemetrySettings) error {
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return err
+	}
+	if err := settings.Validate(); err != nil {
+		return err
+	}
+	return s.writePreference("telemetry", data)
 }

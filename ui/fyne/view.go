@@ -3,6 +3,7 @@
 package fyneui
 
 import (
+	"context"
 	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -10,13 +11,16 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/Dylan-M/Go_DCC_Ex_Driver/config"
 	p "github.com/Dylan-M/Go_DCC_Ex_Driver/dccex/protocol"
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/dccex/transport"
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/stations"
+	"github.com/Dylan-M/Go_DCC_Ex_Driver/telemetry"
 	th "github.com/Dylan-M/Go_DCC_Ex_Driver/throttle"
 	"image/color"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 var green = color.NRGBA{R: 46, G: 125, B: 50, A: 255}
@@ -40,6 +44,11 @@ func colored(b *widget.Button, c color.Color) fyne.CanvasObject {
 }
 
 type View struct {
+	dispatch      func(func())
+	closed        atomic.Bool
+	settingsOpen  bool
+	telemetry     *telemetry.Manager
+	saveTelemetry func(config.TelemetrySettings) error
 	*throttlePanel
 	mobile                      bool
 	powerThrottle               bool
@@ -76,9 +85,11 @@ type View struct {
 func entry(text string) *widget.Entry { e := widget.NewEntry(); e.SetText(text); return e }
 
 type Options struct {
-	Host     string
-	Port     int
-	Stations stations.Repository
+	Telemetry     *telemetry.Manager
+	SaveTelemetry func(config.TelemetrySettings) error
+	Host          string
+	Port          int
+	Stations      stations.Repository
 	// PowerThrottle enables administrative controls on desktop only. Mobile
 	// views always use Engineer mode, even when this option is true.
 	PowerThrottle bool
@@ -89,7 +100,7 @@ func New(window fyne.Window, s *th.Session, options ...Options) *View {
 }
 
 func newView(window fyne.Window, s *th.Session, mobile bool, options ...Options) *View {
-	v := &View{Window: window, session: s, mobile: mobile, panels: make(map[int]*throttlePanel), tabTiming: tabTimingFromEnvironment()}
+	v := &View{Window: window, session: s, mobile: mobile, panels: make(map[int]*throttlePanel), tabTiming: tabTimingFromEnvironment(), dispatch: fyne.Do}
 	o := Options{Host: stations.DefaultHost, Port: stations.DefaultPort}
 	if len(options) > 0 {
 		o = options[0]
@@ -101,6 +112,7 @@ func newView(window fyne.Window, s *th.Session, mobile bool, options ...Options)
 		}
 	}
 	v.stationStore = o.Stations
+	v.telemetry, v.saveTelemetry = o.Telemetry, o.SaveTelemetry
 	v.powerThrottle = o.PowerThrottle && !mobile
 	v.status = widget.NewLabel("Disconnected")
 	if v.powerThrottle {
@@ -292,10 +304,12 @@ func newView(window fyne.Window, s *th.Session, mobile bool, options ...Options)
 		window.SetContent(newMobileSurface(split))
 		window.Resize(fyne.NewSize(390, 780))
 	}
+	v.installSettingsAccess()
 	return v
 }
 func (v *View) showError(err error) {
 	if err != nil {
+		v.telemetry.Event(context.Background(), "ui.error_shown")
 		dialog.ShowError(err, v.Window)
 	}
 }
@@ -433,6 +447,8 @@ func (v *View) consoleView() fyne.CanvasObject {
 
 // Render must run on Fyne's main goroutine.
 func (v *View) Render(s th.State) {
+	_, finish := v.telemetry.Start(context.Background(), "ui.render")
+	defer finish(nil)
 	timing := v.tabTiming.span(s.Cab, true)
 	timing.mark("state_render_begin")
 	defer timing.mark("state_render_complete")

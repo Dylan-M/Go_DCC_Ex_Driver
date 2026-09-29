@@ -1,8 +1,10 @@
 package throttle
 
 import (
+	"context"
 	"errors"
 	p "github.com/Dylan-M/Go_DCC_Ex_Driver/dccex/protocol"
+	"go.opentelemetry.io/otel/attribute"
 	"slices"
 	"time"
 )
@@ -17,6 +19,7 @@ type CabState struct {
 }
 
 type cabRuntime struct {
+	pendingContext           context.Context
 	state                    CabState
 	pending                  *int
 	lastSpeed, lastDirection int
@@ -30,6 +33,7 @@ func (c *Controller) currentCab() cabRuntime {
 	r.state.Cab, r.state.Speed, r.state.Direction, r.state.Functions = c.state.Cab, c.state.Speed, c.state.Direction, c.state.Functions
 	r.state.Toggle = c.state.Toggle
 	r.pending, r.lastSpeed, r.lastDirection, r.lastKnown, r.lastSent = c.pending, c.lastSpeed, c.lastDirection, c.lastKnown, c.lastSent
+	r.pendingContext = c.pendingContext
 	return r
 }
 func (c *Controller) storeCab() { c.cabs[c.state.Cab] = c.currentCab() }
@@ -38,6 +42,7 @@ func (c *Controller) loadCab(cab int) {
 	c.state.Cab, c.state.Speed, c.state.Direction, c.state.Functions = r.state.Cab, r.state.Speed, r.state.Direction, r.state.Functions
 	c.state.Toggle = r.state.Toggle
 	c.pending, c.lastSpeed, c.lastDirection, c.lastKnown, c.lastSent = r.pending, r.lastSpeed, r.lastDirection, r.lastKnown, r.lastSent
+	c.pendingContext = r.pendingContext
 }
 func (c *Controller) cabStates() []CabState {
 	result := make([]CabState, 0, len(c.cabs))
@@ -66,7 +71,9 @@ func (c *Controller) WithCab(cab int, fn func(*Controller) error) error {
 	return err
 }
 
-func (c *Controller) AddCab(cab int) error {
+func (c *Controller) AddCab(cab int) (resultErr error) {
+	finish := c.operation("tab_add", attribute.Int("loco.address", cab))
+	defer func() { finish(resultErr) }()
 	if _, ok := c.cabs[cab]; ok {
 		return errors.New("a throttle for that address is already open")
 	}
@@ -81,14 +88,18 @@ func (c *Controller) AddCab(cab int) error {
 // FocusCab switches visible tabs without canceling another tab's speed intent.
 // SelectCab retains its existing cancel-on-cab-change behavior for callers that
 // are selecting a different locomotive rather than navigating open throttles.
-func (c *Controller) FocusCab(cab int) error {
+func (c *Controller) FocusCab(cab int) (resultErr error) {
+	finish := c.operation("tab_focus", attribute.Int("loco.address", cab))
+	defer func() { finish(resultErr) }()
 	if _, ok := c.cabs[cab]; !ok {
 		return errors.New("throttle has been closed")
 	}
 	return c.selectCab(cab, true)
 }
 
-func (c *Controller) RemoveCab(cab int) error {
+func (c *Controller) RemoveCab(cab int) (resultErr error) {
+	finish := c.operation("tab_remove", attribute.Int("loco.address", cab))
+	defer func() { finish(resultErr) }()
 	c.storeCab()
 	r, ok := c.cabs[cab]
 	if !ok {
@@ -111,7 +122,9 @@ func (c *Controller) RemoveCab(cab int) error {
 	return nil
 }
 
-func (c *Controller) ReplaceCab(old, next int) error {
+func (c *Controller) ReplaceCab(old, next int) (resultErr error) {
+	finish := c.operation("tab_replace", attribute.Int("loco.address", next), attribute.Int("loco.previous_address", old))
+	defer func() { finish(resultErr) }()
 	if old == next {
 		return nil
 	}

@@ -6,6 +6,8 @@ import (
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/config"
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/dccex/client"
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/dccex/transport"
+	"github.com/Dylan-M/Go_DCC_Ex_Driver/telemetry"
+	"go.opentelemetry.io/otel/attribute"
 	"io"
 	"reflect"
 	"sync"
@@ -31,29 +33,38 @@ func Open(ctx context.Context, o Connection) (io.ReadWriteCloser, error) {
 // Session serializes UI intents, station replies, and timers. Updates contain
 // snapshots, never live controller data. Slow views receive the latest state.
 type Session struct {
-	queueMu  sync.Mutex // serializes acceptance with Close
-	ctx      context.Context
-	cancel   context.CancelFunc
-	actions  chan sessionAction
-	updates  chan State
-	done     chan struct{}
-	opener   Opener
-	saveTabs func(config.ThrottleSettings) error
-	current  *client.Client // owned by run
+	telemetry *telemetry.Manager
+	queueMu   sync.Mutex // serializes acceptance with Close
+	ctx       context.Context
+	cancel    context.CancelFunc
+	actions   chan sessionAction
+	updates   chan State
+	done      chan struct{}
+	opener    Opener
+	saveTabs  func(config.ThrottleSettings) error
+	current   *client.Client // owned by run
 }
 
 type sessionAction struct {
+	ctx        context.Context
+	finish     func(error)
 	apply      func(*Controller) error
 	preference bool
 }
 
 func NewSession(settings config.Settings, opener Opener, tabs ...TabPersistence) *Session {
+	return NewObservedSession(settings, opener, nil, tabs...)
+}
+
+func NewObservedSession(settings config.Settings, opener Opener, observer *telemetry.Manager, tabs ...TabPersistence) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 	if opener == nil {
 		opener = Open
 	}
 	s := &Session{ctx: ctx, cancel: cancel, actions: make(chan sessionAction, 128), updates: make(chan State, 1), done: make(chan struct{}), opener: opener}
 	c := New(settings.Toggle)
+	s.telemetry = observer
+	c.telemetry = observer
 	if len(tabs) > 0 {
 		if err := c.restoreTabs(tabs[0].Initial); err != nil {
 			c.Log("err", "Saved throttles unavailable: "+err.Error())
@@ -88,14 +99,23 @@ func (s *Session) enqueue(action sessionAction) error {
 	defer s.queueMu.Unlock()
 	select {
 	case <-s.ctx.Done():
+		s.telemetry.Event(context.Background(), "action.rejected_closing")
 		return errors.New("application is closing")
 	default:
 	}
+	name := "controller.action"
+	if action.preference {
+		name = "controller.preference"
+	}
+	action.ctx, action.finish = s.telemetry.Start(context.Background(), name)
 	select {
 	case s.actions <- action:
 		return nil
 	default:
-		return errors.New("controller is busy; command was not queued")
+		err := errors.New("controller is busy; command was not queued")
+		s.telemetry.Event(action.ctx, "action.queue_full")
+		action.finish(err)
+		return err
 	}
 }
 func (s *Session) Connect(o Connection) error {
@@ -105,15 +125,25 @@ func (s *Session) Connect(o Connection) error {
 			s.current = nil
 			return nil
 		}
+		attrs := []attribute.KeyValue{attribute.String("server.address", o.Host), attribute.Int("server.port", o.Port), attribute.String("transport", "tcp")}
+		if o.Serial {
+			attrs = []attribute.KeyValue{attribute.String("device", o.Device), attribute.Int("baud", o.Baud), attribute.String("transport", "serial")}
+		}
+		ctx, finish := s.telemetry.Start(c.operationContext, "connection.open", attrs...)
+		s.telemetry.Event(ctx, "connection.attempt", attrs...)
 		conn, err := s.opener(s.ctx, o)
 		if err != nil {
+			s.telemetry.Event(ctx, "connection.open_failed", attrs...)
+			finish(err)
 			return err
 		}
 		if s.ctx.Err() != nil {
 			conn.Close()
+			finish(s.ctx.Err())
 			return s.ctx.Err()
 		}
-		s.current = client.New(conn)
+		finish(nil)
+		s.current = client.NewObserved(conn, s.telemetry, attrs)
 		where := o.Host
 		if o.Serial {
 			where = o.Device
@@ -140,7 +170,9 @@ func (s *Session) publish(state State) {
 	}
 }
 func (s *Session) run(c *Controller) {
+	s.telemetry.Event(context.Background(), "session.started")
 	defer close(s.done)
+	defer s.telemetry.Event(context.Background(), "session.stopped")
 	defer close(s.updates)
 	defer c.Close()
 	defer s.flushPreferences(c)
@@ -165,11 +197,15 @@ func (s *Session) run(c *Controller) {
 			s.applyAction(c, action)
 		case now := <-speed.C:
 			if s.ctx.Err() == nil {
-				c.Tick(now)
+				if err := c.Tick(now); err != nil {
+					s.telemetry.Event(context.Background(), "throttle.tick_failed")
+				}
 			}
 		case <-poll.C:
 			if s.ctx.Err() == nil {
-				c.Poll()
+				if err := c.Poll(); err != nil {
+					s.telemetry.Event(context.Background(), "station.poll_failed")
+				}
 			}
 		case e, ok := <-events:
 			if !ok {
@@ -182,7 +218,10 @@ func (s *Session) run(c *Controller) {
 			} else if e.Result.Err != nil {
 				c.Log("err", e.Result.Err.Error())
 			} else {
+				previousContext := c.operationContext
+				c.operationContext = e.Context
 				c.Receive(e.Result.Event)
+				c.operationContext = previousContext
 			}
 		}
 		next := c.Snapshot()
@@ -197,14 +236,27 @@ func (s *Session) run(c *Controller) {
 }
 
 func (s *Session) applyAction(c *Controller, action sessionAction) {
+	var actionErr error
+	if action.finish != nil {
+		defer func() { action.finish(actionErr) }()
+	}
+	oldContext := c.operationContext
+	if action.ctx != nil {
+		c.operationContext = action.ctx
+	}
+	defer func() { c.operationContext = oldContext }()
 	if s.ctx.Err() != nil {
 		if !action.preference {
+			actionErr = s.ctx.Err()
+			s.telemetry.Event(c.operationContext, "action.cancelled")
 			return
 		}
 		c.Detach("Disconnected")
 	}
 	before := c.tabSettings()
 	if err := action.apply(c); err != nil {
+		actionErr = err
+		s.telemetry.Event(c.operationContext, "action.failed")
 		c.Log("err", err.Error())
 	}
 	// Live state is never saved. A failed station query after a valid layout
@@ -212,6 +264,7 @@ func (s *Session) applyAction(c *Controller, action sessionAction) {
 	after := c.tabSettings()
 	if s.saveTabs != nil && !reflect.DeepEqual(before, after) {
 		if err := s.saveTabs(after); err != nil {
+			actionErr = err
 			c.Log("err", "Could not save throttle tabs: "+err.Error())
 		}
 	}

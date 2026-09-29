@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -49,7 +50,12 @@ func TestHeadlessApplicationStartupUsesTabDatabase(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			child := exec.CommandContext(ctx, executable, "-test.run=^TestHeadlessApplicationStartupUsesTabDatabase$", "-test.count=1")
+			childArgs := []string{"-test.run=^TestHeadlessApplicationStartupUsesTabDatabase$", "-test.count=1"}
+			// Preserve the real entry point's coverage across process isolation.
+			if coverage := flag.Lookup("test.gocoverdir"); coverage != nil && coverage.Value.String() != "" {
+				childArgs = append(childArgs, "-test.gocoverdir="+coverage.Value.String())
+			}
+			child := exec.CommandContext(ctx, executable, childArgs...)
 			child.Env = append(os.Environ(), "DCCEX_STARTUP_TEST_CHILD=1", "DCCEX_STARTUP_TEST_MODE="+mode, "TMP="+root, "TEMP="+root, "TMPDIR="+root)
 			if output, err := child.CombinedOutput(); err != nil {
 				t.Fatalf("headless startup failed: %v\n%s", err, output)
