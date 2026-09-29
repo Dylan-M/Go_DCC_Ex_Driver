@@ -3,6 +3,7 @@ package throttle
 import (
 	"errors"
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/config"
+	"go.opentelemetry.io/otel/attribute"
 	"strings"
 )
 
@@ -41,7 +42,9 @@ func (c *Controller) tabSettings() config.ThrottleSettings {
 }
 
 // RenameCab changes a local tab preference without sending operating commands.
-func (c *Controller) RenameCab(cab int, name string) error {
+func (c *Controller) RenameCab(cab int, name string) (resultErr error) {
+	finish := c.operation("tab_rename", attribute.Int("loco.address", cab))
+	defer func() { finish(resultErr) }()
 	r, ok := c.cabs[cab]
 	if !ok {
 		return errors.New("throttle has been closed")
@@ -55,7 +58,9 @@ func (c *Controller) RenameCab(cab int, name string) error {
 }
 
 // SetFunctionLabel changes only this tab's presentation, not its function state.
-func (c *Controller) SetFunctionLabel(cab, n int, label string) error {
+func (c *Controller) SetFunctionLabel(cab, n int, label string) (resultErr error) {
+	finish := c.operation("function_label", attribute.Int("loco.address", cab), attribute.Int("function", n))
+	defer func() { finish(resultErr) }()
 	r, ok := c.cabs[cab]
 	if !ok {
 		return errors.New("throttle has been closed")
@@ -96,7 +101,9 @@ func (s *Session) FlipFunctionToggle(cab, n int) error {
 
 // SetFunctionHidden changes presentation only. Hidden functions still receive
 // station updates and participate in AllFunctionsOff.
-func (c *Controller) SetFunctionHidden(cab, n int, hidden bool) error {
+func (c *Controller) SetFunctionHidden(cab, n int, hidden bool) (resultErr error) {
+	finish := c.operation("function_visibility", attribute.Int("loco.address", cab), attribute.Int("function", n), attribute.Bool("hidden", hidden))
+	defer func() { finish(resultErr) }()
 	r, ok := c.cabs[cab]
 	if !ok {
 		return errors.New("throttle has been closed")

@@ -4,6 +4,12 @@ A native desktop throttle for DCC-EX model railway command stations, written in
 Go with Fyne. Based on [RB211/DCC_Ex_Driver](https://github.com/RB211/DCC_Ex_Driver),
 it connects directly over TCP or USB serial using the DCC-EX native protocol.
 
+![Desktop Run tab with named locomotive throttles, direction control, and custom function labels](docs/screenshots/desktop-run.png)
+
+Screenshots use fixed demonstration data rendered by the application's Fyne
+widgets in the light theme. They show application content, not operating-system
+window borders or a live hardware session. See the [screenshot gallery](docs/SCREENSHOTS.md).
+
 ## Features
 
 - Multiple locomotive throttles, each with independent speed, direction and F0–F28 controls.
@@ -92,6 +98,8 @@ explicit labels rather than an On/Off color.
 All On and All Off are fixed-color action buttons. State changes are displayed
 after the command station reports them.
 
+![Desktop Connection tab in Power Throttle mode, showing saved stations, independent track power, and current draw](docs/screenshots/desktop-connection.png)
+
 Closing or disconnecting the app leaves track power and locomotive operation
 unchanged for other operators. Use the power and stop controls explicitly when
 you want to shut down the layout or stop trains; exiting is not an emergency stop.
@@ -166,12 +174,29 @@ Track power and emergency stop remain shared across throttles.
 The **Programming** tab is available in desktop Power Throttle mode and
 separates programming-track operations from POM.
 
+![Programming Track controls and CV29 bit editor in desktop Power Throttle mode](docs/screenshots/desktop-programming.png)
+
 - **Programming Track**: read/write locomotive addresses and CVs, or use the
   CV29 bit editor. Place only the intended locomotive on the programming track.
 - **POM**: open the **On Main** sub-tab and enter the target locomotive address,
   CV and value. The address is independent of every Run throttle and starts
   blank. The locomotive does not need an open throttle tab. POM uses addressed
   CV writes without readback or decoder acknowledgement.
+
+![POM with its own locomotive address, CV, and value fields](docs/screenshots/desktop-pom.png)
+
+## Telemetry
+
+OpenTelemetry export is **disabled by default**. On desktop, open **Settings**
+from the menu. On Android, open the app-bar overflow menu and choose **Settings**.
+Configure your collector's OTLP/HTTP base URL, enable export, and save. Settings
+apply immediately and persist in the same bbolt database as saved stations.
+
+Metrics, structured events, logs, and traces cover the application and its
+command-station connection. Raw command/response frames are exported only when
+**Debug logs** is enabled. Known credential-bearing commands are redacted.
+Telemetry does not change the DCC-EX protocol or require modified firmware.
+See [Telemetry configuration and signal reference](TELEMETRY.md) for details.
 
 ## Validation and limitations
 

@@ -10,10 +10,17 @@ Android always uses Engineer mode: TCP connections, saved stations, all Run
 controls, and a read-only console. Track power, current monitoring, programming,
 and raw commands require desktop Power Throttle mode (`--power-throttle`).
 
+![Portrait mobile Run layout with two function buttons per row](docs/screenshots/mobile-run.png)
+
+This image is generated from the mobile Fyne layout with fixed demonstration
+data. It does not include Android system bars or the on-screen keyboard and is
+not an emulator capture. More views are in the [screenshot gallery](docs/SCREENSHOTS.md).
+
 ## Build locally
 
 Install the Go version in `go.mod`, Java 21 or newer, and Bash (Git Bash on
 Windows). The setup script requires `curl`, `unzip`, and `sha256sum`.
+Packaging also requires Git and tar, and must run from a Git checkout.
 Use absolute paths for both tool directories. For example, in Git Bash:
 
 ```bash
@@ -31,6 +38,19 @@ The generated manifest records the complete version name, including the alpha
 suffix. The version code must be between 1 and 2,100,000,000; release CI uses its
 workflow run number. Build scripts verify the APK signature, version metadata,
 and CPU architecture. Edit `AndroidManifest.xml.in`, not the generated XML.
+
+Each packaging invocation builds in a temporary source snapshot, including
+modified tracked files and new, non-ignored files. Fyne metadata, the generated
+manifest, and other intermediate files stay outside the checkout. Android builds
+can therefore run alongside each other and desktop builds without changing each
+other's source files. Do not edit source during snapshot creation. Ignored local
+source files are not packaged. Snapshots are removed on success or failure.
+
+Only verified APKs replace the architecture-specific output files. Failed builds
+leave the previous APK intact; do not mistake that old file for a successful new
+build. Concurrent builds of the same architecture share the final filename: the
+last successful build replaces it atomically, without publishing a partial APK.
+Compiler and module caches remain shared.
 
 On Linux, choose writable absolute paths such as `$HOME/android-sdk` and
 `$HOME/android-tools/bin`. Ensure Go and Java are on PATH. Setup downloads
@@ -85,7 +105,10 @@ Closing the Android app must not turn off track power.
 ## CI and caches
 
 `Android build` runs on pull requests or manual dispatch, never branch pushes.
-It builds both architectures and retains test APKs for seven days. The separate
+It tests concurrent packaging and failure cleanup, builds both architectures,
+and retains test APKs for seven days. Run the packaging regression tests locally
+with `node --test scripts/build-android.test.cjs` (Node.js 24 or newer).
+The separate
 release workflow also builds the ARM64 APK and includes it in alpha releases and
 their checksum manifest. Release publication waits for the Android build along
 with all six desktop builds. This is an
