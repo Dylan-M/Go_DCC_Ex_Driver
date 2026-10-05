@@ -40,6 +40,7 @@ func TestDocumentationScreenshots(t *testing.T) {
 		{name: "desktop-connection", power: true},
 		{name: "desktop-programming", power: true, tab: 2},
 		{name: "desktop-pom", power: true, tab: 2},
+		{name: "desktop-consists", power: true, tab: 3},
 		{name: "mobile-run", mobile: true, tab: 1},
 		{name: "mobile-telemetry", mobile: true},
 	} {

@@ -51,13 +51,16 @@ func TestThrottleCapabilities(t *testing.T) {
 			}
 			wantTabs := 2
 			if tc.power {
-				wantTabs = 3
+				wantTabs = 4
 			}
 			if len(v.tabs.Items) != wantTabs || v.tabs.Items[0].Text != "Connection" || v.tabs.Items[1].Text != "Run" {
 				t.Fatal("unexpected tabs")
 			}
 			if (v.mainPower != nil) != tc.power || (v.programmingTabs != nil) != tc.power || (v.current != nil) != tc.power {
 				t.Fatal("administrative controls constructed in the wrong mode")
+			}
+			if (v.consistStatus != nil) != tc.power || tc.power && v.tabs.Items[3].Text != "Consists" {
+				t.Fatal("consist scaffolding must be desktop Power-only")
 			}
 			// The connection form and all locomotive controls remain available.
 			if v.connect == nil || v.savedStations == nil || v.speed == nil || v.direction == nil || v.setupButton == nil || len(v.functions) != 29 {

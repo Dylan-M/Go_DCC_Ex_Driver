@@ -26,6 +26,10 @@ POM has its own target locomotive address, independent of the Run tabs.
 
 ![POM tab](screenshots/desktop-pom.png)
 
+The Consists tab currently shows foundation status only; it cannot edit consists.
+
+![Consist foundation tab](screenshots/desktop-consists.png)
+
 ## Mobile Engineer mode
 
 The portrait layout places at most two function buttons on each row.

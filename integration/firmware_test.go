@@ -211,6 +211,23 @@ func loco(t *testing.T, c *client.Client, cab, speed, dir int, mask uint32, emer
 		return ok && v.Cab == cab && v.Speed == speed && v.Direction == dir && v.FunctionMask == mask && v.Emergency == emergency
 	})
 }
+func TestFirmwareUnknownQueryRejectsWithoutDisconnecting(t *testing.T) {
+	f := startFirmware(t)
+	c := f.connect(t)
+	// U is reserved for user commands and absent from this stock fixture. It is
+	// not a selected opcode for the future capability-discovery contract.
+	send(t, c, "<U>")
+	awaitEvent(t, c, func(e p.Event) bool {
+		_, rejected := e.(p.CommandRejected)
+		return rejected && e.RawFrame() == "<X>"
+	})
+	send(t, c, p.EncodeStatus())
+	awaitEvent(t, c, func(e p.Event) bool {
+		v, ok := e.(p.VersionInfo)
+		return ok && strings.Contains(v.Text, "V-5.6.1 / MEGA")
+	})
+}
+
 func TestFirmwareClientFragmented(t *testing.T) {
 	f := startFirmware(t)
 	c := f.connect(t)

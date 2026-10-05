@@ -61,6 +61,11 @@ connect automatically and is never saved in a station profile or the database.
 Android remains Engineer-only, regardless of startup options. This is a UI
 mode, not authentication or access control on the command station.
 
+Desktop Power Throttle mode also includes a **Consists** tab. It currently
+provides the foundation only: no consist editing or capability query is enabled.
+Existing train controls are unchanged. See [capability discovery](docs/CAPABILITIES.md)
+for the implemented contracts and remaining firmware integration work.
+
 In **Connection**, choose TCP and enter the hostname/IP and port, or choose Serial
 and select the device and baud rate. Click **Connect**. The button changes to
 **Disconnect** while connected.
