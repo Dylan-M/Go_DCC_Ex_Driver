@@ -32,7 +32,8 @@ func TestParseKnownMessages(t *testing.T) {
 		{"<w 10293>", p.AddressResult{Operation: p.Write, Address: 10293}},
 		{"<w -1>", p.AddressResult{Operation: p.Write, Address: -1}},
 		{"<iDCC-EX V-5.0 / ESP32>", p.VersionInfo{Text: "DCC-EX V-5.0 / ESP32"}},
-		{"<X>", p.Unknown{}},
+		{"<X>", p.CommandRejected{}},
+		{"<x>", p.Unknown{}},
 		{"<jR 3 4>", p.Unknown{}},
 	}
 	for _, tt := range cases {

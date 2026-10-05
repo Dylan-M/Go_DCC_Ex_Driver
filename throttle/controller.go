@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Dylan-M/Go_DCC_Ex_Driver/dccex/capabilities"
 	p "github.com/Dylan-M/Go_DCC_Ex_Driver/dccex/protocol"
 	"github.com/Dylan-M/Go_DCC_Ex_Driver/telemetry"
 	"go.opentelemetry.io/otel/attribute"
@@ -20,6 +21,7 @@ type Sender interface {
 }
 type LogEntry struct{ Kind, Text string }
 type State struct {
+	Discovery                                   capabilities.Snapshot
 	Throttles                                   []CabState
 	Connected                                   bool
 	ActiveConnection                            Connection
@@ -38,6 +40,7 @@ type State struct {
 	Logs                                        []LogEntry
 }
 type Controller struct {
+	discovery                capabilities.Discovery
 	telemetry                *telemetry.Manager
 	operationContext         context.Context
 	pendingContext           context.Context
@@ -59,6 +62,7 @@ func New(toggle [29]bool) *Controller {
 }
 func (c *Controller) Snapshot() State {
 	s := c.state
+	s.Discovery = c.discovery.Snapshot()
 	s.Logs = append([]LogEntry(nil), s.Logs...)
 	s.Throttles = c.cabStates()
 	return s
@@ -108,6 +112,7 @@ func (c *Controller) Attach(s Sender, description string) error {
 	return nil
 }
 func (c *Controller) Detach(reason string) {
+	c.discovery.Reset()
 	if c.sender != nil {
 		c.sender.Close()
 	}

@@ -26,7 +26,7 @@ func TestHeadlessApplicationStartupUsesTabDatabase(t *testing.T) {
 		wantTabs := 2
 		if os.Getenv("DCCEX_STARTUP_TEST_MODE") == "Power" {
 			args = []string{"--power-throttle"}
-			wantTabs = 3
+			wantTabs = 4
 		}
 		if err := run(args); err != nil {
 			t.Fatal(err)

@@ -95,8 +95,8 @@ func TestDecoderPreservesOrderAcrossErrors(t *testing.T) {
 	if e, ok := got[2].Event.(p.AddressResult); !ok || e.Address != 300 {
 		t.Fatal("address misclassified")
 	}
-	if _, ok := got[3].Event.(p.Unknown); !ok {
-		t.Fatal("unknown missing")
+	if _, ok := got[3].Event.(p.CommandRejected); !ok {
+		t.Fatal("command rejection missing")
 	}
 	if e, ok := got[4].Event.(p.VersionInfo); !ok || e.Text != "DCC-EX V-5.0" {
 		t.Fatal("version missing")

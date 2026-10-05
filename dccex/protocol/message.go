@@ -77,6 +77,10 @@ type VersionInfo struct {
 	Message
 	Text string
 }
+
+// CommandRejected is the generic, uncorrelated uppercase <X> response.
+// It is not itself proof that any particular optional capability is absent.
+type CommandRejected struct{ Message }
 type Unknown struct{ Message }
 
 // Parse accepts exactly one bracketed frame. Unknown messages are retained for
@@ -104,6 +108,11 @@ func Parse(frame string) (Event, error) {
 		return VersionInfo{m, strings.TrimSpace(strings.TrimSpace(body)[1:])}, nil
 	}
 	switch head {
+	case "X":
+		if len(args) != 0 {
+			return nil, ErrMalformed
+		}
+		return CommandRejected{m}, nil
 	case "l":
 		if len(args) != 4 {
 			return nil, ErrMalformed

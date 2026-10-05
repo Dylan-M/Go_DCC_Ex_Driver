@@ -18,11 +18,11 @@ func TestTabbedThrottles(t *testing.T) {
 	s := th.NewSession(config.Default(), nil)
 	t.Cleanup(func() { s.Close(); <-s.Done(); w.Close() })
 	v := New(w, s, Options{PowerThrottle: true})
-	if len(v.tabs.Items) != 3 || v.tabs.Items[0].Text != "Connection" || v.tabs.Items[1].Text != "Run" || v.tabs.Items[2].Text != "Programming" {
+	if len(v.tabs.Items) != 4 || v.tabs.Items[0].Text != "Connection" || v.tabs.Items[1].Text != "Run" || v.tabs.Items[2].Text != "Programming" || v.tabs.Items[3].Text != "Consists" {
 		t.Fatal("top-level tab layout")
 	}
 	// Station power and current belong exclusively inside Connection, not
-	// in a persistent header above all three tabs.
+	// in a persistent header above the tabs.
 	split, ok := w.Content().(*container.Split)
 	if !ok || split.Leading != v.tabs {
 		t.Fatal("unexpected controls outside the tab layout")

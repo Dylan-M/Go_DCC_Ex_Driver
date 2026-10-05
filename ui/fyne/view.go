@@ -64,6 +64,7 @@ type View struct {
 	rendering                                bool
 	last                                     th.State
 	status, result, cv29Label                *widget.Label
+	consistStatus                            *widget.Label
 	mainPower, progPower, allOn, allOff      *widget.Button
 	mainPowerTheme, progPowerTheme           *container.ThemeOverride
 	current                                  *canvas.Text
@@ -294,6 +295,7 @@ func newView(window fyne.Window, s *th.Session, mobile bool, options ...Options)
 		container.NewTabItem("Run", run))
 	if v.powerThrottle {
 		v.tabs.Append(container.NewTabItem("Programming", v.programTab()))
+		v.tabs.Append(container.NewTabItem("Consists", v.consistTab()))
 	}
 	console := v.consoleView()
 	split := container.NewVSplit(v.tabs, console)
@@ -457,6 +459,7 @@ func (v *View) Render(s th.State) {
 	v.status.SetText(s.Status)
 	if v.powerThrottle {
 		v.renderPowerControls(s)
+		v.consistStatus.SetText(consistDiscoveryText(s))
 	}
 	v.syncThrottles(s)
 	if s.Connected {
